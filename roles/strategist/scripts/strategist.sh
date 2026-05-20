@@ -103,54 +103,6 @@ notify_telegram() {
     [ -f "$notify_script" ] && "$notify_script" strategist "$scenario" >> "$LOG_FILE" 2>&1 || true
 }
 
-run_skill() {
-    local skill_name="$1"
-    local model_override="${2:-${IWE_STRATEGIST_MODEL:-}}"
-
-    log "Starting skill: /$skill_name"
-
-    cd "$WORKSPACE"
-
-    local rc=0
-    local model_args=()
-    if [ -n "$model_override" ]; then
-        model_args=(--model "$model_override")
-        log "Model override: $model_override"
-    fi
-    timeout "$CLAUDE_TIMEOUT" "$CLAUDE_PATH" \
-        "${model_args[@]}" \
-        --allowedTools "Read,Write,Edit,Glob,Grep,Bash" \
-        -p "/$skill_name" \
-        >> "$LOG_FILE" 2>&1 || rc=$?
-
-    if [ $rc -eq 124 ]; then
-        log "WARN: Claude CLI timed out after ${CLAUDE_TIMEOUT}s for skill: /$skill_name"
-    elif [ $rc -ne 0 ]; then
-        log "WARN: Claude CLI exited with code $rc for skill: /$skill_name"
-    fi
-
-    if [ $rc -eq 0 ]; then
-        log "SUCCESS skill: /$skill_name"
-    else
-        log "FAILED skill: /$skill_name (rc=$rc)"
-    fi
-
-    if git -C "$WORKSPACE" diff --quiet origin/main..HEAD 2>/dev/null; then
-        log "No unpushed commits"
-    else
-        git -C "$WORKSPACE" pull --rebase >> "$LOG_FILE" 2>&1 && log "Pulled (rebase)" || log "WARN: pull --rebase failed"
-        git -C "$WORKSPACE" push >> "$LOG_FILE" 2>&1 && log "Pushed to GitHub" || log "WARN: git push failed"
-    fi
-
-    git -C "$WORKSPACE" reset --quiet 2>/dev/null || true
-    log "Cleared staging area after Claude session"
-
-    local summary
-    summary=$(tail -5 "$LOG_FILE" | grep -v '^\[' | head -3)
-    notify "Стратег: $skill_name" "$summary"
-    return $rc
-}
-
 run_claude() {
     local command_file="$1"
     # Опциональная модель: второй аргумент или IWE_STRATEGIST_MODEL из env.
@@ -312,8 +264,8 @@ case "$1" in
             run_claude "session-prep" "claude-sonnet-4-6"
             notify_telegram "session-prep"
         else
-            log "Morning: running day open (skill)"
-            run_skill "day-open" "claude-sonnet-4-6"
+            log "Morning: running day plan"
+            run_claude "day-plan" "claude-sonnet-4-6"
             notify_telegram "day-plan"
         fi
         ;;
@@ -328,8 +280,8 @@ case "$1" in
             log "SKIP: week-review already completed today"
             exit 0
         fi
-        log "Sunday: running week close (skill)"
-        run_skill "week-close" "claude-opus-4-7"
+        log "Sunday: running week review"
+        run_claude "week-review" "claude-opus-4-7"
         # Fallback push for Knowledge Index (week-review creates a post there)
         # KI_REPO may not exist for all users — guard with [ -d ]
         KI_REPO="$HOME/IWE/DS-Knowledge-Index"
@@ -344,8 +296,8 @@ case "$1" in
         notify_telegram "session-prep"
         ;;
     "day-plan")
-        log "Manual: running day open (skill)"
-        run_skill "day-open" "claude-sonnet-4-6"
+        log "Manual: running day plan"
+        run_claude "day-plan" "claude-sonnet-4-6"
         notify_telegram "day-plan"
         ;;
     "note-review")
@@ -405,13 +357,13 @@ case "$1" in
         notify_telegram "note-review"
         ;;
     "day-close")
-        log "Manual: running day close (skill)"
-        run_skill "day-close" "claude-sonnet-4-6"
+        log "Manual: running day close"
+        run_claude "day-close" "claude-sonnet-4-6"
         notify_telegram "day-close"
         ;;
     "strategy-session")
-        log "Manual: running strategy session (skill)"
-        run_skill "strategy-session"
+        log "Manual: running strategy session (interactive)"
+        run_claude "strategy-session"
         ;;
     *)
         echo "Usage: $0 {morning|note-review|week-review|session-prep|strategy-session|day-plan|day-close}"

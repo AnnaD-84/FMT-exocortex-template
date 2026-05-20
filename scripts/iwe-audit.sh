@@ -182,7 +182,7 @@ fi
 emit_inventory_row "params.yaml" 1 ""
 
 # DS-strategy — директория с .git
-DS_DIR="$IWE_ROOT/${GOVERNANCE_REPO:-DS-strategy}"
+DS_DIR="$IWE_ROOT/DS-strategy"
 TOTAL=$((TOTAL + 1))
 if [ -d "$DS_DIR" ]; then
     if [ -d "$DS_DIR/.git" ]; then
