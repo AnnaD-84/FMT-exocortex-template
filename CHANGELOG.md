@@ -26,10 +26,13 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-05-27
+
+
+## [Unreleased] — обновлено 2026-05-29
 
 ### Added
 
+- `8c15f16` feat(skill/day-close): мультипликатор считать ПО ФАКТУ + sanity check
 - `7285005` feat(distinctions): Ход (turn) ≠ Сессия (DP.SC.162 v2, WP-358)
 - `54e3f31` feat(distinctions): Session request/light/heavy — WP-358 peer-сессия 27 мая
 - `6e38782` feat(WP-350/Ф20): доставка Маршрутизатора и 5 скиллов в FMT через promote-конвейер
@@ -60,9 +63,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `cecf52d` feat(WP-348): Ф4 — create-skill.sh + validate-skill.sh
 - `d4e3db2` feat(WP-348): Ф3 — SKILL.md v2 шаблон + генератор каталога + мигратор
 - `2136141` feat: settings-promote.sh + pre-commit HOOK-PATH-CONVENTION gate
+- `333c83d` feat(strategist): complete runner migration — run_skill() for day-open/day-close/week-close/strategy-session
 
 ### Changed
 
+- `f1caefd` improve(peer): adversarial prompt — критик обязан найти хотя бы одно возражение
 - `74d5b67` sync(wp-new): синхронизация с user-level — active-wp пересборка + блокирующее правило
 - `c098042` ci(validate-template): add validate-fmt-scripts.sh to CI pipeline
 - `89ea560` refactor(WP-350 Ф5): R29 Артефактор → Декомпозитор, /artifactor → /decompose
@@ -75,6 +80,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `32e3607` fix(server-calendar): add utf-8 encoding declaration to Python heredocs
 - `39ca8ea` fix(template): replace author-specific DS-my-strategy with placeholder
 - `beb7f15` fix(week-draft): WD1 — заполнять даты Пн-Вс в таблице метрик для совместимости с append
 - `8676d68` fix(setup): auto-enable core.hooksPath for repos with .githooks/
@@ -102,6 +108,9 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `7f3fba0` fix(WP-348): SIGPIPE-баг в migrate-skills-to-v2.sh has_field()
 - `8a231a3` fix(CI): закрыть 3 реальных блокера Validate Template
 - `b00ef4c` fix(settings-promote): inline jq check вместо полного validate-fmt-scripts.sh
+- `72f7572` fix: hook paths — $CLAUDE_PROJECT_DIR/ convention for all hook commands
+- `e337183` fix(manifest): remove strategist prompts from deprecated_files — runner still uses them
+- `5bffbc9` fix: replace hardcoded DS-strategy with GOVERNANCE_DIR/GOVERNANCE_REPO env vars
 
 
 ## [0.34.1] — 2026-05-21
