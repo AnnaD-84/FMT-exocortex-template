@@ -149,3 +149,15 @@ Before starting any edit task:
    ```
 
 4. On `lock_collision`: wait 30s and retry, or switch to another file.
+
+## Hermes Agent — координация
+
+Если в экосистеме присутствует Hermes Agent (оркестратор с персистентной памятью, РП-392):
+- Hermes НЕ заменяет Claude Code / Kimi Code в кодинге — координирует, запоминает, даёт мобильный доступ.
+- Hermes НЕ имеет MCP Gateway (`acquire_file_lock` / `release_file_lock`) — правит файлы через `terminal` + `patch`.
+- При правках критичных файлов: сначала `git pull`, проверить `git status`, потом править; конфликт на push — сообщить пилоту.
+
+## Prompt Cache Pattern
+
+- Паттерн PREFIX/BODY/TAIL для headless-агентов → см. `memory/sota-prompt-cache.md`.
+- Применять при сборке системного промпта multi-turn агента: стабильное (идентичность, правила) — в PREFIX/BODY до cache-breakpoint; волатильное (память, timestamp) — в TAIL.
