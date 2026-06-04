@@ -182,6 +182,21 @@ If you discover a discrepancy (file doesn't match plan, stale content, inconsist
 
 **Fail-safe:** если не вызвал сам — детерминированно пишет `{{HOME_DIR}}/IWE/scripts/agent-status-report.sh <agent> <status> [task] [files-csv]` (Claude — из Stop-хука, Kimi — из `kimi-peer-adapter.sh`). Не отменяет primary.
 
+## WP-REGISTRY Naming — CRITICAL
+
+**Колонка «Название» в WP-REGISTRY содержит ТОЛЬКО имя артефакта ≤80 символов.**
+
+Запрещено в колонке «Название»: даты закрытия, ссылки на peer-сессии, метрики фаз, SHA коммитов, результаты проверок.
+
+- ✅ `~~Алгоритм диагностики~~`
+- ❌ `~~Алгоритм диагностики~~ — closed 30 мая (PHASE1=5, MANDATORY=5...)`
+
+**Куда писать:**
+- Итог закрытия РП → раздел `## Закрытие` в `archive/wp-contexts/WP-NNN-*.md`
+- Текущие фазы и прогресс → frontmatter поля `phases`/`progress` в `inbox/WP-NNN.md`
+
+**При начале работы с РП:** прочитать `inbox/WP-NNN.md`. При изменении статуса фаз → обновить frontmatter карточки, НЕ имя реестра.
+
 ## WP Context Scope — Umbrella РП
 
 Для зонтичных (umbrella) РП с `agent_scope: open-only` в frontmatter:
