@@ -909,6 +909,7 @@
     "scripts/tests/test_agent_dashboard.py",
     "scripts/validate-fmt-scripts.sh",
     "scripts/validate-skill.sh",
+    "scripts/verify-manifest.sh",
     "scripts/week-draft-append.sh",
     "scripts/week-draft-init.sh"
   ],

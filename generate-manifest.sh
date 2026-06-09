@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MANIFEST="$SCRIPT_DIR/update-manifest.json"
 
 # Версия из CHANGELOG.md (первый ## [X.Y.Z])
-VERSION=$(grep -m1 '^\#\# \[' "$SCRIPT_DIR/CHANGELOG.md" | sed 's/.*\[\(.*\)\].*/\1/')
+VERSION=$(grep -m1 '^\#\# \[[0-9]' "$SCRIPT_DIR/CHANGELOG.md" | sed 's/.*\[\(.*\)\].*/\1/')
 
 if [ -z "$VERSION" ]; then
     echo "ERROR: Не удалось извлечь версию из CHANGELOG.md"
