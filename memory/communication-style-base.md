@@ -1,6 +1,6 @@
 ---
 name: communication-style-base
-description: "ПРОЕКЦИЯ L0 базового стиля IWE. SoT: PACK-digital-platform/.../02-domain-entities/communication-style-base.md"
+description: "ПРОЕКЦИЯ S0 базового стиля IWE. SoT: PACK-digital-platform/.../02-domain-entities/communication-style-base.md"
 type: reference
 horizon: hot
 domains: [communication, ux]

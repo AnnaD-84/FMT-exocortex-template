@@ -21,10 +21,22 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-06-09
+
+
+## [Unreleased] — обновлено 2026-06-13
 
 ### Added
 
+- `4f4c232` feat(linux): кросс-платформенная портируемость — systemd user-таймеры ролей, единый env-bootstrap, OS-aware backup-check (#184). **Linux-портабилити — работа @TriplEight (Denis Pisarev), PR #179 + #181, консолидированы в #184 с тремя фиксами при интеграции.**
+- `5ca5e7b` feat(hooks): destructive-guard + check-trash — детерминированный блок необратимых git-операций (#183). **Хуки безопасности — @TriplEight (Denis Pisarev), извлечены из PR #176.**
+- `ba94993` feat(WP-7/DOA1): осознанная синхронизация day-open-scaffold.sh
+- `47ec08b` feat: model lifecycle (analysis/testing/active/archived) for local-llm stack (РП404 Ф2)
+- `0ce2cda` feat: promote local-llm stack to template (РП404 Ф3)
+- `7ca6e2e` feat(wp7): MFC4 — auto-manifest generation + verify + CI gate
+- `7a87f87` feat(conveyor): PR template surfacing 6 stations to reviewer
+- `34c6e36` feat(docs): add developer-guide and conveyor-card template
+- `23b0494` feat(FMT): auto-manifest generation with excluded_paths (WP-7 MFC4)
+- `a969580` feat: promote check-wp-format.py to platform (WP-7 follow-up)
 - `718ee1f` feat: token optimization — lazy-load roles, distinctions, peer session modes
 - `bdd5ec2` feat(setup): авторизация MCP по тирам — T3/T4 CLI, T1-T2 OAuth
 - `7b33865` feat: density-reinjection стиля + блок-режим детектора (peer-session 2026-06-08-23)
@@ -73,9 +85,23 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `7e9aa78` feat(triage): post-2026-06-01 backlog cleanup infrastructure
 - `dc18e90` feat(detection): MVP FMT critical/deadline issues alert (peer-session 2026-06-01-18) (#145)
 - `6be164d` feat(hindsight): WP-337/А.13 FMT template — docker-compose, start, launchd, docs
+- `43e8268` feat(WP-377): promote pack-creator + org-dev + spf-guard
+- `f47bf49` feat(WP-348): promote apply-captures defer_until invariant to L1
+- `bc5686f` feat(L1): B-005 reliability обхода Backlog и pending-фаз
+- `fbc5585` feat(L1): promote DP.D.052 v2 формулировок из peer-сессии 2026-05-31-11
 
 ### Changed
 
+- `44f4261` chore(fpf): обновление fpf-reference.md до commit 093d30e
+- `cf9d198` docs(conveyor): update README links after guide.md -> developer-guide.md
+- `62b36df` docs(conveyor): rename guide.md -> developer-guide.md
+- `1b92003` docs(conveyor): convert guide.md code-paths to real markdown links
+- `35fbbca` docs(conveyor): list stations at first mention + honest 'agent knows framework' claim
+- `3841a2f` docs(conveyor): fix links to docs/developer/ + repo-loading step content
+- `66fc7fd` docs(conveyor): collect developer docs under docs/developer/ + add repo-loading step
+- `c3df606` docs(readme): link conveyor onboarding for T4+ developers
+- `d951be1` docs(conveyor): add 'work in your own IWE' + T4 vs T1-T3 framing
+- `04ff150` docs(conveyor): single entry point + fix author-leak/class-scheme
 - `96003c5` Merge pull request #166 from TserenTserenov/fix/pr-164-blockers
 - `51f609d` docs(WP-349 Ф31): web-onboarding v2 — freemium, две оси, без триала
 - `ba4f5e6` docs(WP-349): Ф34 — онбординг-доки под канон двух осей
@@ -92,9 +118,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `0a15c8a` docs(skills): Ф4 WP-386 — явный Шаг 1 Extensions checks + WHY-комментарий dry-run sentinel
 - `c54ff45` ci: migrate actions/checkout@v4 → v6, github-script@v7 → v8
 - `76be56b` docs(CHANGELOG): корректировки 0.35.0 по post-deploy verify
+- `22cdd0d` chore(WP-377): R29 Детектор → R47 в hooks/lib/detectors
 
 ### Fixed
 
+- `c7b92f4` fix(wp7): generate-manifest.sh skips [Unreleased], add verify-manifest.sh to excluded_paths
 - `e814373` fix(FMT): close manifest coverage gap (WP-7 MFC1-MFC3)
 - `d12febc` fix(manifest): register 4 new lazy-load files from PR #164/#166
 - `9a795af` fix: typo in role-prefixes + trim protocol-open to ≤150 lines

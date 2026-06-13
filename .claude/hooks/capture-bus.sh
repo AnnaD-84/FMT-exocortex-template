@@ -13,9 +13,11 @@ set -uo pipefail  # без -e, чтобы ошибка одного детект
 # Guard: harness может вызвать hook с урезанным PATH.
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
-IWE_ROOT="${IWE_ROOT:-$HOME/IWE}"
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="$(cd "$HOOK_DIR/.." && pwd)"
+# shellcheck source=../lib/iwe-env-bootstrap.sh
+source "$CLAUDE_DIR/lib/iwe-env-bootstrap.sh" || exit 1
 LIB_DIR="$CLAUDE_DIR/lib"
 LOG_FILE="${CAPTURE_LOG_FILE:-$CLAUDE_DIR/logs/capture_log.jsonl}"
 

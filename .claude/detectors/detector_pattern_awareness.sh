@@ -60,7 +60,11 @@ if [ ! -f "$FILE_PATH" ] || [ ! -r "$FILE_PATH" ]; then
 fi
 
 # ── Определяем target_repo ───────────────────────────────────────────────────
-IWE_ROOT="${IWE_ROOT:-$HOME/IWE}"
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
+DETECTOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$(cd "$DETECTOR_DIR/.." && pwd)"
+# shellcheck source=../lib/iwe-env-bootstrap.sh
+source "$CLAUDE_DIR/lib/iwe-env-bootstrap.sh" || exit 1
 TARGET_REPO_HINT=""
 
 if [[ "$FILE_PATH" == /* ]]; then

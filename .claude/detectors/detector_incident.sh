@@ -24,6 +24,12 @@
 
 set -uo pipefail
 
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
+DETECTOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$(cd "$DETECTOR_DIR/.." && pwd)"
+# shellcheck source=../lib/iwe-env-bootstrap.sh
+source "$CLAUDE_DIR/lib/iwe-env-bootstrap.sh" || exit 1
+
 INPUT=$(cat)
 
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')

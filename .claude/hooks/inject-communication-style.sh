@@ -3,14 +3,14 @@
 # Event: UserPromptSubmit
 # see DP.SC.050 (обещание «Единый разговорный стиль агентов»), WP-388 Ф8
 #
-# Назначение: доставить L0 базовый разговорный стиль (SoT в Pack) + L1 авторские
+# Назначение: доставить S0 базовый разговорный стиль (SoT в Pack) + S1 авторские
 #             надстройки в контекст Claude Code ПЕРЕД ответом. Заменяет хрупкую
 #             вклейку маркер-блока в генерируемые CLAUDE.md / AGENTS.md (которые
 #             перезаписываются template-sync.sh / sync-agent-instructions.sh).
 #
 # Архитектура (WP-388 Ф8, АрхГейт пройден):
-#   L0 = PACK-digital-platform/.../02-domain-entities/communication-style-base.md (read-only)
-#   L1 = ${IWE_GOVERNANCE_REPO:-DS-strategy}/memory/communication-style-author.md (additive-only)
+#   S0 = PACK-digital-platform/.../02-domain-entities/communication-style-base.md (read-only)
+#   S1 = ${IWE_GOVERNANCE_REPO:-DS-strategy}/memory/communication-style-author.md (additive-only)
 #   Доставка = этот хук (UserPromptSubmit). Генерируемые файлы не трогаются.
 #
 # Поведение (density-based reinjection, peer-session 2026-06-08-23):
@@ -104,7 +104,7 @@ if [ -f "$L1_FILE" ]; then
   L1_BODY=$(strip_fm "$L1_FILE")
 fi
 
-CONTEXT="## 🗣 Разговорный стиль IWE (L0 база + L1 автор) — применять при ответе человеку
+CONTEXT="## 🗣 Разговорный стиль IWE (S0 база + S1 автор) — применять при ответе человеку
 
 Источник истины: \`DP.SC.050\` (Pack). Канал-детектор: технический режим — для стенограмм/commit/PR; «на пальцах» — для чата с пилотом и §1-§4 синтеза report.md.
 
@@ -113,7 +113,7 @@ $L0_BODY"
 if [ -n "$L1_BODY" ]; then
   CONTEXT="$CONTEXT
 
-### L1 — авторские надстройки пилота (additive-only, не отменяют L0)
+### S1 — авторские надстройки пилота (additive-only, не отменяют S0)
 
 $L1_BODY"
 fi

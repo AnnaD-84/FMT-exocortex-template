@@ -9,7 +9,12 @@
 set -uo pipefail
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
-IWE_ROOT="${IWE_ROOT:-$HOME/IWE}"
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$(cd "$SKILL_DIR/../.." && pwd)"
+# shellcheck source=../../lib/iwe-env-bootstrap.sh
+source "$CLAUDE_DIR/lib/iwe-env-bootstrap.sh" || exit 1
+
 LOG_FILE="$IWE_ROOT/.claude/logs/check-secret.jsonl"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 

@@ -33,7 +33,13 @@
       "path": ".claude/hooks/capture-bus.sh"
     },
     {
+      "path": ".claude/hooks/check-trash.sh"
+    },
+    {
       "path": ".claude/hooks/close-gate-reminder.sh"
+    },
+    {
+      "path": ".claude/hooks/destructive-guard.sh"
     },
     {
       "path": ".claude/hooks/dry-run-gate.sh"
@@ -82,6 +88,9 @@
     },
     {
       "path": ".claude/lib/capture_writer.sh"
+    },
+    {
+      "path": ".claude/lib/iwe-env-bootstrap.sh"
     },
     {
       "path": ".claude/lib/log_formatter.sh"
@@ -160,6 +169,9 @@
     },
     {
       "path": ".claude/skills/day-open/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/day-open/templates.md"
     },
     {
       "path": ".claude/skills/decompose/SKILL.md"
@@ -432,6 +444,30 @@
       "path": "extensions/day-open.after.session-orphans.md"
     },
     {
+      "path": "extensions/local-llm/ADR-001-local-llm-stack.md"
+    },
+    {
+      "path": "extensions/local-llm/README.md"
+    },
+    {
+      "path": "extensions/local-llm/detect-hardware.sh"
+    },
+    {
+      "path": "extensions/local-llm/install-local-llm.sh"
+    },
+    {
+      "path": "extensions/local-llm/iwe-local-llm.sh"
+    },
+    {
+      "path": "extensions/local-llm/model-catalog.yaml"
+    },
+    {
+      "path": "extensions/local-llm/model-lifecycle.py"
+    },
+    {
+      "path": "extensions/local-llm/model-monitor.py"
+    },
+    {
       "path": "extensions/protocol-close.after.session-record.md"
     },
     {
@@ -621,6 +657,12 @@
       "path": "roles/extractor/scripts/launchd/com.extractor.inbox-check.plist"
     },
     {
+      "path": "roles/extractor/scripts/systemd/iwe-extractor-inbox-check.service"
+    },
+    {
+      "path": "roles/extractor/scripts/systemd/iwe-extractor-inbox-check.timer"
+    },
+    {
       "path": "roles/role-boundaries.md"
     },
     {
@@ -735,6 +777,18 @@
       "path": "roles/strategist/scripts/strategist.sh"
     },
     {
+      "path": "roles/strategist/scripts/systemd/iwe-strategist-morning.service"
+    },
+    {
+      "path": "roles/strategist/scripts/systemd/iwe-strategist-morning.timer"
+    },
+    {
+      "path": "roles/strategist/scripts/systemd/iwe-strategist-weekreview.service"
+    },
+    {
+      "path": "roles/strategist/scripts/systemd/iwe-strategist-weekreview.timer"
+    },
+    {
       "path": "roles/synchronizer/README.md"
     },
     {
@@ -772,6 +826,12 @@
     },
     {
       "path": "roles/synchronizer/scripts/sync-files.sh"
+    },
+    {
+      "path": "roles/synchronizer/scripts/systemd/iwe-exocortex-scheduler.service"
+    },
+    {
+      "path": "roles/synchronizer/scripts/systemd/iwe-exocortex-scheduler.timer"
     },
     {
       "path": "roles/synchronizer/scripts/templates/extractor.sh"
