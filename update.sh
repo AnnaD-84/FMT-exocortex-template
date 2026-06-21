@@ -12,6 +12,15 @@
 #
 set -e
 
+# Named exit codes (issue #31): improve diagnostics for non-obvious failures.
+EXIT_OK=0
+EXIT_USAGE=1
+EXIT_NETWORK=2
+EXIT_CONFLICT=49
+EXIT_GENERAL=1
+
+trap 'echo "ОШИБКА: update.sh прервался на строке ${LINENO}: ${BASH_COMMAND}" >&2' ERR
+
 VERSION="2.1.0"  # WP-273 Этап 2: Generated runtime architecture (F)
 REPO="TserenTserenov/FMT-exocortex-template" # UPSTREAM-CONST: do not substitute
 BRANCH="main"
@@ -23,6 +32,19 @@ AUTO_YES=false
 # Allow extra curl flags via env var (e.g. CURL_OPTS="--insecure" for Windows corporate firewall).
 # shellcheck disable=SC2086  # $CURL_BASE_OPTS intentionally unquoted (multi-token flag)
 CURL_BASE_OPTS="${CURL_OPTS:-}"
+
+# Windows (msys/cygwin) schannel backend may fail with CRYPT_E_NO_REVOCATION_CHECK.
+# Detect the best available SSL revocation flag without making a network call.
+_CURL_SSL_OPT=""
+case "${OSTYPE:-}" in
+  msys*|cygwin*)
+    if curl --help 2>&1 | grep -q "ssl-revoke-best-effort"; then
+      _CURL_SSL_OPT="--ssl-revoke-best-effort"
+    elif curl --help 2>&1 | grep -q "ssl-no-revoke"; then
+      _CURL_SSL_OPT="--ssl-no-revoke"
+    fi
+    ;;
+esac
 
 for arg in "$@"; do
     case "$arg" in
@@ -91,7 +113,7 @@ echo ""
 # === Step 0: Self-update (bootstrap) ===
 echo "[0] Проверка update.sh..."
 REMOTE_UPDATE="$TMPDIR_UPDATE/update.sh.new"
-if curl $CURL_BASE_OPTS -sSfL "$RAW_BASE/update.sh" -o "$REMOTE_UPDATE" 2>/dev/null; then
+if curl $CURL_BASE_OPTS $_CURL_SSL_OPT -sSfL "$RAW_BASE/update.sh" -o "$REMOTE_UPDATE" 2>/dev/null; then
     LOCAL_HASH=$(hash_file "$SCRIPT_DIR/update.sh")
     REMOTE_HASH=$(hash_file "$REMOTE_UPDATE")
     if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
@@ -110,7 +132,7 @@ echo "[1] Загрузка манифеста..."
 MANIFEST_URL="$RAW_BASE/update-manifest.json"
 MANIFEST="$TMPDIR_UPDATE/manifest.json"
 
-if ! curl $CURL_BASE_OPTS -sSfL "$MANIFEST_URL" -o "$MANIFEST" 2>/dev/null; then
+if ! curl $CURL_BASE_OPTS $_CURL_SSL_OPT -sSfL "$MANIFEST_URL" -o "$MANIFEST" 2>/dev/null; then
     echo "ОШИБКА: Не удалось загрузить манифест обновлений."
     echo "  URL: $MANIFEST_URL"
     echo "  Проверьте подключение к интернету."
@@ -130,6 +152,7 @@ NEW_DESCS=()
 UPDATED_FILES=()
 UPDATED_LINES=()
 UNCHANGED=0
+CLAUDE_CONFLICTS=0  # unresolved CLAUDE.md merge conflict counter (WP-7)
 
 # Count total files for progress display
 TOTAL_FILES=$(python3 -c "
@@ -146,7 +169,7 @@ while IFS='|' read -r fpath fdesc; do
     # Protected user files (issue #154): never overwrite if they already exist locally.
     # The "Не затрагиваются" list below is cosmetic; this is the actual skip-if-exists guard.
     case "$fpath" in
-        params.yaml|memory/MEMORY.md|.claude/settings.local.json)
+        params.yaml|memory/MEMORY.md|.claude/settings.local.json|sessions/00-index.md)
             if [ -f "$SCRIPT_DIR/$fpath" ]; then
                 UNCHANGED=$((UNCHANGED + 1))
                 continue
@@ -159,7 +182,7 @@ while IFS='|' read -r fpath fdesc; do
     REMOTE_FILE="$TMPDIR_UPDATE/files/$fpath"
     mkdir -p "$(dirname "$REMOTE_FILE")"
 
-    if ! curl $CURL_BASE_OPTS -sSfL "$RAW_BASE/$fpath" -o "$REMOTE_FILE" 2>/dev/null; then
+    if ! curl $CURL_BASE_OPTS $_CURL_SSL_OPT -sSfL "$RAW_BASE/$fpath" -o "$REMOTE_FILE" 2>/dev/null; then
         continue
     fi
 
@@ -271,6 +294,7 @@ echo "  ✓ extensions/ (ваши расширения протоколов)"
 echo "  ✓ params.yaml (ваши параметры)"
 echo "  ✓ .secrets/ (ключи)"
 echo "  ✓ .claude/settings.local.json (permissions)"
+echo "  ✓ sessions/00-index.md (журнал peer-сессий)"
 echo "  ✓ personal/ (ваши файлы)"
 echo "  ✓ DS-strategy/ (ваше планирование)"
 echo ""
@@ -337,6 +361,7 @@ for f in "${UPDATED_FILES[@]}"; do
                     # Conflicts detected — save merged file with markers
                     cp "$TMPDIR_UPDATE/claude-merged.md" "$CURRENT_FILE"
                     cp "$NEW_FILE" "$BASE_FILE"
+                    CLAUDE_CONFLICTS=$((CLAUDE_CONFLICTS + CONFLICT_COUNT))
                     echo "  ~ $f (3-way merge, $CONFLICT_COUNT конфликтов — разрешите вручную)"
                     echo "    Конфликты обозначены <<<<<<< / ======= / >>>>>>>"
                 else
@@ -361,6 +386,23 @@ for f in "${UPDATED_FILES[@]}"; do
             # Save base for next update
             cp "$NEW_FILE" "$SCRIPT_DIR/.claude.md.base"
         fi
+    elif [[ "$f" == .claude/skills/*/SKILL.md ]]; then
+        # USER-SPACE preserve for L1 skill spec files (no install_constants in SCRIPT_DIR — already {{KEY}})
+        CURR_SKILL_FILE="$SCRIPT_DIR/$f"
+        if [ -f "$CURR_SKILL_FILE" ]; then
+            USER_SECTION=$(sed -n '/^<!-- USER-SPACE -->/,/^<!-- \/USER-SPACE -->/p' "$CURR_SKILL_FILE")
+        else
+            USER_SECTION=""
+        fi
+        cp "$TMPDIR_UPDATE/files/$f" "$SCRIPT_DIR/$f"
+        if [ -n "$USER_SECTION" ]; then
+            perl -i -0pe 's/^<!-- USER-SPACE -->.*?^<!-- \/USER-SPACE -->//ms' "$SCRIPT_DIR/$f"
+            perl -i -0pe 's/\n+$/\n/' "$SCRIPT_DIR/$f"
+            printf '\n%s\n' "$USER_SECTION" >> "$SCRIPT_DIR/$f"
+            echo "  ~ $f (USER-SPACE preserved)"
+        else
+            echo "  ~ $f"
+        fi
     else
         cp "$TMPDIR_UPDATE/files/$f" "$SCRIPT_DIR/$f"
         case "$f" in *.sh) chmod +x "$SCRIPT_DIR/$f" ;; esac
@@ -368,6 +410,29 @@ for f in "${UPDATED_FILES[@]}"; do
     fi
     APPLIED=$((APPLIED + 1))
 done
+
+# Detect pre-existing nested conflict markers before we propagate merged files.
+# This prevents stacking new 3-way merges on top of unresolved ones (issue #31).
+conflict_marker_files=()
+for cf in "$SCRIPT_DIR/CLAUDE.md" "$WORKSPACE_DIR/CLAUDE.md"; do
+    [ -f "$cf" ] && grep -q '^<<<<<<<' "$cf" && conflict_marker_files+=("$cf")
+done
+if [ "${#conflict_marker_files[@]}" -gt 0 ]; then
+    echo ""
+    echo "ОШИБКА: обнаружены неразрешённые конфликты слияния (вложенные маркеры):"
+    for cf in "${conflict_marker_files[@]}"; do echo "  - $cf"; done
+    echo "  Разрешите их вручную и перезапустите update.sh."
+    exit "$EXIT_CONFLICT"
+fi
+
+# Hard-fail if CLAUDE.md still has conflict markers — skip propagation and commit.
+if [ "$CLAUDE_CONFLICTS" -gt 0 ]; then
+    echo ""
+    echo "ОШИБКА: CLAUDE.md содержит неразрешённые конфликты слияния."
+    echo "  Конфликты обозначены <<<<<<< / ======= / >>>>>>>"
+    echo "  Разрешите их вручную в $SCRIPT_DIR/CLAUDE.md и перезапустите update.sh."
+    exit "$EXIT_CONFLICT"
+fi
 
 # Remove deprecated files
 for i in "${!DEPRECATED_FOUND[@]}"; do
@@ -593,8 +658,14 @@ for f in "${NEW_FILES[@]}" "${UPDATED_FILES[@]}"; do
                 WS_CONFLICTS=$(grep -c '^<<<<<<<' "$TMPDIR_UPDATE/ws-claude-merged.md" 2>/dev/null || true); WS_CONFLICTS=${WS_CONFLICTS:-0}
                 cp "$TMPDIR_UPDATE/ws-claude-merged.md" "$WS_CURRENT"
                 cp "$WS_NEW" "$WS_BASE"
+                CLAUDE_CONFLICTS=$((CLAUDE_CONFLICTS + WS_CONFLICTS))
                 if [ "$WS_CONFLICTS" -gt 0 ]; then
-                    echo "  ✓ $WS_CURRENT обновлён (3-way merge, $WS_CONFLICTS конфликтов)"
+                    echo "  ~ $WS_CURRENT ($WS_CONFLICTS конфликтов — разрешите вручную)"
+                    echo "    Конфликты обозначены <<<<<<< / ======= / >>>>>>>"
+                    echo ""
+                    echo "ОШИБКА: CLAUDE.md содержит неразрешённые конфликты слияния."
+                    echo "  Разрешите их вручную в $WS_CURRENT и перезапустите update.sh."
+                    exit 1
                 else
                     echo "  ✓ $WS_CURRENT обновлён (3-way merge)"
                 fi
@@ -647,13 +718,51 @@ fi
 # Propagate skills, hooks, rules, lib, config, detectors to workspace if changed.
 # lib/config/detectors — runtime dependencies капчер-шины (capture-bus.sh) и детекторов.
 for f in "${NEW_FILES[@]}" "${UPDATED_FILES[@]}"; do
-    case "$f" in .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/settings.json)
-        src="$SCRIPT_DIR/$f"
-        dst="$WORKSPACE_DIR/$f"
-        mkdir -p "$(dirname "$dst")"
-        cp "$src" "$dst"
-        echo "  ✓ $f → workspace"
-        ;;
+    case "$f" in
+        .claude/skills/*/SKILL.md)
+            src="$SCRIPT_DIR/$f"
+            dst="$WORKSPACE_DIR/$f"
+            mkdir -p "$(dirname "$dst")"
+            # 1. Extract USER_SECTION from workspace before overwriting
+            if [ -f "$dst" ]; then
+                USER_SECTION=$(sed -n '/^<!-- USER-SPACE -->/,/^<!-- \/USER-SPACE -->/p' "$dst" 2>/dev/null || true)
+            else
+                USER_SECTION=""
+            fi
+            # 2. Extract install_constants values from workspace frontmatter
+            if [ -f "$dst" ]; then
+                IC_BLOCK=$(awk '/^install_constants:/{found=1} found && /^[a-z][^:]+:/ && !/^install_constants:/{exit} found{print}' "$dst" 2>/dev/null || true)
+            else
+                IC_BLOCK=""
+            fi
+            # 3. Copy src (with {{KEY}} placeholders) → dst
+            cp "$src" "$dst"
+            # 4. Substitute install_constants: {{KEY}} → VALUE
+            if [ -n "$IC_BLOCK" ]; then
+                while IFS=': ' read -r key val; do
+                    key="${key#"${key%%[! ]*}"}"
+                    val="${val#"${val%%[! ]*}"}"
+                    [[ "$key" =~ ^[A-Z_]+$ ]] && [ -n "$val" ] || continue
+                    sed_inplace "s|{{${key}}}|${val}|g" "$dst"
+                done <<< "$IC_BLOCK"
+            fi
+            # 5. Reinject USER_SECTION
+            if [ -n "$USER_SECTION" ]; then
+                perl -i -0pe 's/^<!-- USER-SPACE -->.*?^<!-- \/USER-SPACE -->//ms' "$dst"
+                perl -i -0pe 's/\n+$/\n/' "$dst"
+                printf '\n%s\n' "$USER_SECTION" >> "$dst"
+                echo "  ✓ $f → workspace (USER-SPACE preserved)"
+            else
+                echo "  ✓ $f → workspace"
+            fi
+            ;;
+        .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/styles/*|.claude/settings.json)
+            src="$SCRIPT_DIR/$f"
+            dst="$WORKSPACE_DIR/$f"
+            mkdir -p "$(dirname "$dst")"
+            cp "$src" "$dst"
+            echo "  ✓ $f → workspace"
+            ;;
     esac
 done
 
@@ -688,7 +797,7 @@ while IFS='|' read -r fpath _; do
                 fi
             fi
             ;;
-        .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/settings.json)
+        .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/styles/*|.claude/settings.json)
             dst="$WORKSPACE_DIR/$fpath"
             if [ ! -f "$dst" ]; then
                 mkdir -p "$(dirname "$dst")"
@@ -881,6 +990,55 @@ fi
 if [ -f "$MANIFEST" ]; then
     cp "$MANIFEST" "$SCRIPT_DIR/update-manifest.json" \
         && echo "  • update-manifest.json: заменён remote manifest (v$UPSTREAM_VERSION)"
+fi
+
+# === Step 6f: Orphan detection — L1 files not in manifest ===
+# Warn about files present on disk in L1 directories that are not listed in
+# update-manifest.json (neither in files[] nor deprecated_files[]).
+# These may be stale user customisations or files left over from a renamed skill.
+# Never auto-deletes; always informational only.
+if command -v python3 &>/dev/null && [ -f "$SCRIPT_DIR/update-manifest.json" ]; then
+    ORPHAN_OUTPUT=$(python3 - <<'PYEOF'
+import json, os
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+manifest_path = os.path.join(script_dir, "update-manifest.json")
+
+with open(manifest_path) as f:
+    manifest = json.load(f)
+
+known = set(manifest.get("files", []))
+deprecated = set(manifest.get("deprecated_files", []))
+all_known = known | deprecated
+
+L1_DIRS = [".claude/hooks", ".claude/rules", ".claude/skills"]
+L1_PREFIXES = ["memory/protocol-"]
+
+orphans = []
+for base in L1_DIRS:
+    full_base = os.path.join(script_dir, base)
+    if not os.path.isdir(full_base):
+        continue
+    for root, dirs, files in os.walk(full_base):
+        for fname in files:
+            full = os.path.join(root, fname)
+            rel = os.path.relpath(full, script_dir)
+            if rel not in all_known:
+                tag = "[maybe-L3]" if "extensions/" in rel else "[orphan]"
+                orphans.append((tag, rel))
+
+for tag, rel in sorted(orphans):
+    print(f"  {tag} {rel}")
+PYEOF
+)
+    if [ -n "$ORPHAN_OUTPUT" ]; then
+        echo ""
+        echo "⚠  Файлы в L1-директориях не найдены в манифесте (не удалять автоматически):"
+        echo "$ORPHAN_OUTPUT"
+        echo "   [orphan]   — возможно устаревший платформенный файл; удалите вручную или"
+        echo "               добавьте в deprecated_files если это намеренно удалённый артефакт."
+        echo "   [maybe-L3] — возможно пользовательское расширение (extensions/)."
+    fi
 fi
 
 # === Step 7: Commit changes ===
