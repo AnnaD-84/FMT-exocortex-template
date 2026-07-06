@@ -4,6 +4,13 @@
 
 set -e
 
+# Load canonical path variables if launchd/systemd did not inject them.
+# This makes the runner self-contained when invoked outside a fully-sourced shell.
+if [ -f "$HOME/.iwe-paths" ]; then
+    # shellcheck source=/dev/null
+    . "$HOME/.iwe-paths"
+fi
+
 # Предотвращаем сон: -i (idle, работает на батарее) -d (display) -u (user activity)
 # Флаг -s (system sleep) не используем — он НЕ работает на батарее (OBC может переключить профиль)
 # Linux: caffeinate отсутствует — guard через command -v (на Linux достаточно, что cron/systemd сам управляет sleep)
@@ -134,6 +141,15 @@ run_claude() {
 
     if [ ! -f "$command_path" ]; then
         log "ERROR: Command file not found: $command_path"
+        log "  PROMPTS_DIR=$PROMPTS_DIR"
+        log "  IWE_TEMPLATE=${IWE_TEMPLATE:-<not set>}"
+        log "  HOME=$HOME"
+        log "  Available prompts:"
+        if [ -d "$PROMPTS_DIR" ]; then
+            ls -1 "$PROMPTS_DIR" >> "$LOG_FILE" 2>&1 || true
+        else
+            log "  (directory does not exist)"
+        fi
         exit 1
     fi
 
@@ -251,7 +267,9 @@ acquire_lock() {
 
 # Читаем strategy_day из конфига (L4 Personal)
 RHYTHM_CONFIG="$HOME/.claude/projects/-Users-$(whoami)-IWE/memory/day-rhythm-config.yaml"
+WEEK_CLOSE_DAY_NAME=$(grep 'week_close_day:' "$RHYTHM_CONFIG" 2>/dev/null | awk '{print $2}' || true)
 STRATEGY_DAY_NAME=$(grep 'strategy_day:' "$RHYTHM_CONFIG" 2>/dev/null | awk '{print $2}' || echo "monday")
+STRATEGY_DAY_NAME="${WEEK_CLOSE_DAY_NAME:-$STRATEGY_DAY_NAME}"
 # Конвертируем имя дня в номер (1=Mon..7=Sun)
 case "$STRATEGY_DAY_NAME" in
     monday)    STRATEGY_DAY_NUM=1 ;;

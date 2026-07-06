@@ -1,42 +1,62 @@
 ---
 name: platform-bottleneck
-description: "Alias for /bottleneck-pick --layer platform. Deprecated — use /bottleneck-pick directly."
+description: "Скилл IWE — см. тело файла"
 version: 1.0.0
-layer: L3
+layer: L1
 status: active
-sunset: "FMT v2.0 (semver-major)"
-type: alias
-redirects_to: bottleneck-pick
 triggers:
   slash: [/platform-bottleneck]
   phrases: []
 routing:
   executor: sonnet
   deterministic: false
+agents: single
+interaction: multi-step
+gates_required: []
+gates_enforced: []
+gates_rationale: "операционный скилл; WP Gate применим только при создании нового РП, не для операционных вызовов"
 ---
 
-# /platform-bottleneck — Alias (Deprecated)
+# Skill: /platform-bottleneck
 
-> ⚠️ **Deprecated.** Этот skill является alias для `/bottleneck-pick --layer platform`.
-> Прямой вызов `/bottleneck-pick` предпочтителен.
+> **Алиас.** Делегирует в `/bottleneck-pick --layer platform`.
 >
-> **Sunset:** удалится при FMT v2.0 (semver-major).
+> Решение (S-46, 2026-05-21): два скилла (intra + platform) объединены в один через `--layer` параметр. Отдельный скилл — избыточен. Оставлен как удобный триггер.
+>
+> SC: DP.SC.152. Носитель: DP.ROLE.054.
 
-## Поведение
+## When to use
 
-При вызове `/platform-bottleneck [--horizon <h>] [--subsystem <s>]` — выполнить:
+Скилл IWE — см. тело файла
+
+## Algorithm
+
+### Шаг 1. Разобрать аргументы
+
+Извлечь `--horizon` и `--subsystem` из аргументов вызова.
+
+### Шаг 2. Делегировать в /bottleneck-pick
+
+Без `--subsystem`:
 
 ```
 /bottleneck-pick --target c2:platform --layer platform [--horizon <h>]
 ```
 
-Если `--subsystem` указан:
+С `--subsystem`:
 
 ```
 /bottleneck-pick --target c2:platform --layer platform --subsystem <s> [--horizon <h>]
 ```
 
+### Шаг 3. Вернуть результат
+
+Результат `/bottleneck-pick` передаётся пилоту без изменений.
+
 ## Полная документация
 
 → `/bottleneck-pick` SKILL.md (секция `--layer=platform`)
 → DP.SC.152 (обещание платформо-специфичного анализа)
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

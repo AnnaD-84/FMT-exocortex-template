@@ -29,7 +29,14 @@ if [ -z "${WORKSPACE_DIR:-}" ]; then
     WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
   elif [[ "$SCRIPT_DIR" =~ /\.claude/ ]]; then
     # We're in .claude/hooks, .claude/lib, .claude/detectors, or .claude/skills
-    WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    # When bootstrap is sourced from inside FMT-exocortex-template/.claude/,
+    # going up two levels lands inside FMT, not in the real workspace root.
+    _candidate="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    if [[ "$(basename "$_candidate")" == "FMT-exocortex-template" ]]; then
+      WORKSPACE_DIR="$(cd "$_candidate/.." && pwd)"
+    else
+      WORKSPACE_DIR="$_candidate"
+    fi
   elif [[ "$SCRIPT_DIR" =~ /.iwe-runtime/ ]]; then
     # Runtime-generated scripts
     WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -81,6 +88,9 @@ export IWE_SCRIPTS="${IWE_SCRIPTS:-${WORKSPACE_DIR}/FMT-exocortex-template/scrip
 # Export to child processes
 export WORKSPACE_DIR
 export IWE_ROOT
+# IWE_WORKSPACE: alias for WORKSPACE_DIR, referenced by SPF/Pack CLAUDE.md paths.
+# Fallback only — keeps any value already set by the user's shell profile.
+export IWE_WORKSPACE="${IWE_WORKSPACE:-$WORKSPACE_DIR}"
 
 # Validation: ensure WORKSPACE_DIR exists
 if [ ! -d "$WORKSPACE_DIR" ]; then

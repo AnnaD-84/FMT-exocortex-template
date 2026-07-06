@@ -73,3 +73,13 @@ skills:
     browser: true
     keywords: ["bottleneck", "горлышко", "constraint", "ограничение", "toc"]
     description: "Identify system bottleneck using Theory of Constraints."
+
+  - name: integration-gate
+    browser: true
+    keywords: ["integration gate", "новый инструмент", "новый агент", "новая система", "новый детектор", "IntegrationGate"]
+    description: "4-step checklist for new tools/agents/systems: Service Clause → Scenarios → Role → Implementation."
+
+  - name: author-mode
+    browser: false
+    keywords: ["staging", "promote", "author_mode", "extensions gate", "авторское", "шаблон FMT", "L3"]
+    description: "Author-only: staging channel (testing → FMT), Extensions Gate, L3 rules."

@@ -230,3 +230,6 @@ Coverage: N/4
 - **DS-strategy diff** — работает только если существует `FMT-strategy-template/` (или `templates/strategy-skeleton/`). Если нет — секция пометится «N/A».
 - **MCP healthcheck** — зависит от текущих доступных tools. Если набор изменится, обновить шаг 2.
 - **Sentinel sticky-state** — защита: TTL 10 мин в хуке + Stop-cleanup. Edge case: если хук изменён и не читает sentinel → блокировки не будет (fail-open). Защита: периодический re-test `/audit-installation` ловит регрессию.
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

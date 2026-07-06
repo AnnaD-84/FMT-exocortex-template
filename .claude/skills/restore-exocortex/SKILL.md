@@ -56,3 +56,6 @@ related: ["#125"]
 | Скрипт не найден | До мержа #151 — взять из ветки: `git checkout feat/exocortex-sync-restore -- scripts/restore-from-exocortex.sh`; иначе bug-report |
 | memory населена, нет подтверждения | НЕ перезаписывать. Показать dry-run, ждать явного «да»/`--force` |
 | Агент ещё не настроен (голое устройство) | Скилл недоступен → инструктировать запуск скрипта из терминала (bootstrap-путь, SETUP-GUIDE) |
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

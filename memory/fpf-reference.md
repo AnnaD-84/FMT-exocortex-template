@@ -1,7 +1,7 @@
 ---
-valid_from: 2026-06-10
+valid_from: 2026-06-21
 originSessionId: 9a0e726a-951e-4408-9e02-94d7eeffbf74
-last_sync_commit: 093d30e
+last_sync_commit: fe0df9dcb06cfc87c8a6cb2f7cce3ac0d3b64d5e
 
 type: reference
 horizon: warm

@@ -62,3 +62,6 @@ bash "$IWE_SCRIPTS/route-task.sh" --skill transcribe --args "<путь_к_фай
 ### Поддерживаемые форматы
 
 mp3, m4a, wav, flac, ogg, mp4, mkv, webm — любые, которые поддерживает ffmpeg.
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

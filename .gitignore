@@ -14,5 +14,5 @@ DS-exocortex-setup/
 # Author-local downstream config for sync-communication-style.py (WP-388)
 scripts/sync-communication-style.yaml
 
-# Логи аудита установки (runtime-артефакты, не в шаблон)
-scripts/iwe-audit-*.log
+# Backup copies created by skill-promote.sh — local safety net, not for git
+.backups/

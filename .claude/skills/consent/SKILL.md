@@ -1,6 +1,6 @@
 ---
 name: consent
-description: Manage consent in learning.tracking_consent — opt-in / opt-out / status / revoke. Required for the stage_evaluator worker (WP-253 Block 2). GDPR-compliant.
+description: Управление consent в learning.tracking_consent — opt-in / opt-out / status / revoke. Обязательное условие для работы stage_evaluator worker (WP-253 Блок 2). GDPR-совместимо.
 argument-hint: "status | opt-in [scope] | opt-out | revoke"
 version: 1.0.0
 layer: L1
@@ -13,6 +13,11 @@ routing:
   deterministic: true
   script_path: "scripts/iwe-consent.sh"
   optimization_priority: 1
+agents: none
+interaction: one-shot
+gates_required: []
+gates_enforced: []
+gates_rationale: "операционный скилл; WP Gate применим только при создании нового РП, не для операционных вызовов"
 ---
 
 # Consent — управление согласием на трекинг
@@ -21,6 +26,10 @@ routing:
 >
 > **Архитектурный принцип:** consent хранится в `learning.tracking_consent` (BC = `learning`, не персона). Это разрешение на агрегирование, не персональные данные.
 
+## When to use
+
+Управление consent в learning.tracking_consent — opt-in / opt-out / status / revoke. Обязательное условие для работы stage_evaluator worker (WP-253 Блок 2). GDPR-совместимо.
+
 ## Аргументы
 
 - `status` (default) — показать текущее состояние consent
@@ -28,13 +37,23 @@ routing:
 - `opt-out` — отозвать согласие (opt_in=FALSE, история сохраняется)
 - `revoke` — полное удаление row (GDPR right to erasure)
 
-## Шаг
+## Algorithm
+
+### Шаг 1. Вызвать скрипт маршрутизации
 
 ```bash
 bash "$IWE_SCRIPTS/route-task.sh" --skill consent --args "$ARGUMENTS"
 ```
 
 Скрипт читает `IWE_OWNER_ORY_UUID` из окружения. Пишет через роль `consent_writer` (миграция 113); fallback на `DATABASE_URL_LEARNING_DIRECT`.
+
+### Шаг 2. Интерпретировать результат
+
+Скрипт сообщает об успехе через stdout (exit 0) или ошибке через stderr (exit ненулевой).
+
+### Шаг 3. Вернуть ответ пилоту
+
+Вывести stdout скрипта пилоту без изменений.
 
 ## Возможные scopes
 
@@ -62,3 +81,6 @@ bash "$IWE_SCRIPTS/route-task.sh" --skill consent --args "$ARGUMENTS"
 
 - Миграция `113-consent-writer-grants.sql` (в директории миграций инфраструктурного репозитория)
 - Privacy spec: [`B7.3.6-stage-evaluation-privacy-spec.md`](../../../DS-ecosystem-development/C.IT-Platform/C2.IT-Platform/C2.2.Architecture/Data-Governance/B7.3.6-stage-evaluation-privacy-spec.md)
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

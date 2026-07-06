@@ -62,3 +62,6 @@ bash "$IWE_SCRIPTS/route-task.sh" --skill check-secret --args "$ARGUMENTS"
 - **Правило поведения:** Правило 25 в `memory/feedback_behaviour.md` — secrets никогда в чат как плейнтекст.
 - **Runbook:** `DP.RUNBOOK.003-cascade-secret-rotation.md` для процедуры reactive ротации.
 - **Канон паттернов:** `$IWE_SCRIPTS/pre-commit-secret-scan.sh` — единая точка для regex-паттернов; check.sh использует тот же набор.
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

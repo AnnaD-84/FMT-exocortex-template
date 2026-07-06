@@ -1,13 +1,18 @@
 ---
 name: apply-captures
-description: Process extraction reports with pending-review status — R15 decision (accept/reject/defer), write to Pack, update status, commit. Call during Close when N>0 pending-review reports exist.
+description: Разбор extraction-reports со status pending-review — решение R15 (accept/reject/defer), запись в Pack, обновление статуса, коммит. Вызывать при Close при наличии N>0 pending-review отчётов.
 argument-hint: "[путь к конкретному отчёту | пусто = все pending-review]"
 version: 1.0.0
 layer: L1
 status: active
+agents: single
+interaction: multi-step
 triggers:
   slash: [/apply-captures]
   phrases: []
+gates_required: []
+gates_enforced: []
+gates_rationale: "операционный скилл разбора очереди; WP Gate не нужен — вызывается автоматически из Close Gate"
 routing:
   executor: sonnet
   deterministic: false
@@ -18,10 +23,12 @@ routing:
 Полная ВДВ-карта цикла: `${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/WP-247-ke-pipeline-vdv.md`
 Контракт скилла взят из шагов 5, 6, 6.5, 7 этой карты.
 
-## Scope
+## When to use
+
+### Scope
 
 **Этот скилл делает:**
-- Читает `${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/extraction-reports/*.md` со `status: pending-review`.
+- Читает `${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/extraction-reports/*.md` со `status: pending-review` или `status: deferred`.
 - Для каждого кандидата в отчёте — запрашивает решение R15 (accept / reject / defer).
 - Accept → опциональная редактура → валидация → запись файла в Pack → обновление MAP → коммит.
 - Reject → запись причины + паттерна в `feedback-log.md`.
@@ -33,7 +40,7 @@ routing:
 - Не создаёт extraction-reports — это R2.
 - Не редактирует содержимое captures.md / fleeting-notes.md.
 
-## ВДВ-контракт (шаги 5–7 из ke-pipeline-vdv.md)
+### ВДВ-контракт (шаги 5–7 из ke-pipeline-vdv.md)
 
 ```
 Вход:   ${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/extraction-reports/*.md  со  status: pending-review
@@ -57,7 +64,9 @@ routing:
   - Коммит в PACK-* (при accept).
 ```
 
-## Формат решения R15
+## Algorithm
+
+### Формат решения R15
 
 Каждый кандидат — структурированное решение:
 
@@ -77,17 +86,17 @@ defer_until: "после WP-245 Ф22"     # ОБЯЗАТЕЛЬНО — дата 
 
 **Инвариант defer (peer-session 2026-05-31-22):** `defer_until` — обязательное поле при `decision: defer`. Без него решение invalid. Reason: `deferred` без `defer_until` = masked cancel (см. `memory/lessons_defer_with_explicit_triggers.md`). Формат: дата `YYYY-MM-DD` ИЛИ привязка к событию («после WP-NNN Ф{N}», «при следующем Week Close»).
 
-## Шаг 1. Найти pending-review отчёты
+### Шаг 1. Найти pending-review отчёты
 
 ```bash
 find ~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/extraction-reports -name "*.md" \
-  -exec grep -l "^status: pending-review" {} \; | sort
+  -exec grep -l -E "^status: (pending-review|deferred)" {} \; | sort
 ```
 
 Если `$ARGUMENTS` задан путь — работать только с ним.
 Если отчётов нет → сообщить «Нет pending-review отчётов. Ничего делать не нужно.»
 
-## Шаг 2. Для каждого отчёта: показать кандидатов
+### Шаг 2. Для каждого отчёта: показать кандидатов
 
 Прочитать отчёт. Для каждого кандидата (frontmatter + тело) показать:
 - `id`, `type`, предложенный `target_path`
@@ -96,12 +105,12 @@ find ~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/extraction-reports -name "*
 
 Запросить решение R15 по схеме выше. Один вопрос = один кандидат.
 
-## Шаг 3. Accept — редактура (conditional)
+### Шаг 3. Accept — редактура (conditional)
 
 Если `edits_needed: yes` → предложить отредактировать текст совместно с пользователем.
 Если `edits_needed: no` → использовать текст as-is из отчёта.
 
-## Шаг 4 (= ВДВ шаг 6.5). Валидация Pack-сущности
+### Шаг 4 (= ВДВ шаг 6.5). Валидация Pack-сущности
 
 Перед записью проверить три условия:
 
@@ -130,15 +139,107 @@ grep -r "^id: <ID>" ~/IWE/PACK-* | head -5
 - `DP.METHOD.*` → `.../03-methods/`
 - `DP.ROLE.*` → `.../02-domain-entities/` или `.../roles/`
 - `DP.SOTA.*` → `.../06-sota/`
-- `PD.*` → аналогичная структура в `PACK-personal/` или доменном Pack'е
+- `PD.*` → аналогичная структура в `PACK-personal/` или другом Pack-репо домена
 
 При сомнении — проверить соседние файлы в целевой директории.
 
 **Результат валидации:**
-- `valid` → переходить к Шагу 5
+- `valid` → переходить к Шагу 4г
 - `invalid` + причина → reject этого кандидата, записать в feedback-log, продолжить следующий кандидат
 
-## Шаг 5. Запись в Pack и коммит
+### 4г. Семантическая проверка (содержательная непротиворечивость)
+
+Перед записью проверить содержательную совместимость кандидата с соседними Pack-сущностями того же типа:
+
+**Шаг 1 — прочитать ±5 соседних ID** того же типа в целевой директории:
+```bash
+ls <target_dir>/ | sort | grep -A5 -B5 "<ID-slug>"
+```
+Для каждого соседнего файла: прочитать `summary:` или первые 3 строки тела — проверить на пересечение.
+
+**Шаг 2 — grep ключевых существительных**. Взять 2-3 ключевых существительных из имени кандидата. Искать в целевом Pack-репо:
+```bash
+grep -ri "<ключевое_слово>" ~/IWE/<PACK-repo>/pack/ --include="*.md" -l | head -10
+```
+Если найдено совпадение: прочитать файл. Проверить:
+- **Перекрытие**: кандидат описывает то же самое другими словами → reject (дубликат), паттерн для R2.
+- **Противоречие**: кандидат утверждает обратное существующему → выяснить, какой новее/точнее; если новый кандидат вытесняет старый — accept + пометить в отчёте `supersedes: <ID>`.
+- **Уточнение**: кандидат добавляет деталь без конфликта → accept, добавить `see_also: [<ID>]` в frontmatter.
+
+**Результат 4г:**
+- `clear` → переходить к Шагу 4д
+- `overlap` → reject; паттерн + ссылка на существующий ID в feedback-log
+- `contradiction` → выявить новейший; при accept добавить `supersedes:`
+- `refinement` → accept + `see_also:` в frontmatter кандидата
+
+### 4д. Semantic Gate — WP-429 Контур A (write-time soft gate)
+
+> **Когда применяется:** кандидат с `decision: accept` и тип `DP.*` (DP.D.*, DP.ROLE.*, DP.SC.*, DP.METHOD.*) или `PD.*` в `PACK-digital-platform` или `PACK-personal`.
+> **Soft gate:** не блокирует — информирует R15. R15 принимает финальное решение.
+> **Когда пропускается:** `decision: reject` / `defer`, или тип не Pack-сущность (скрипт, шаблон, docs).
+
+**Шаг 1 — семантический поиск соседей** (inline, без внешнего скрипта):
+
+Вызвать MCP-инструмент `knowledge_search` с текстом кандидата:
+```
+knowledge_search(query=<первые 400 символов текста кандидата>, limit=5)
+```
+
+Отфильтровать из результатов: только сущности с ID типа `DP.*` или `PD.*` (game концепты, не гайды).
+Взять top-3 с наибольшей близостью.
+
+**Шаг 2 — inline LLM-оценка** каждой пары (кандидат × сосед):
+
+Для каждого из top-3 соседей вынести суждение:
+- Кандидат: `<name> — <первые 500 символов текста>`
+- Сосед: `<neighbor_id> «<neighbor_name>» — <первые 500 символов>`
+- Вердикт: `duplicate | contradiction | related | unrelated`
+
+Критерии (из detector.py):
+- `duplicate` — оба описывают то же понятие с тем же смыслом; держать оба = путаница
+- `contradiction` — несовместимые утверждения об одном понятии
+- `related` — связаны, но явно различны; конфликта нет
+- `unrelated` — разные темы
+
+**Шаг 3 — результат gate:**
+
+| Вердикт | Действие |
+|---------|---------|
+| Все `related`/`unrelated` | `clear` → перейти к Шагу 5 |
+| Найден `duplicate` | Предупредить R15 (формат ниже) |
+| Найдено `contradiction` | Предупредить R15 (формат ниже) |
+
+**Формат предупреждения R15:**
+```
+⚠️  Semantic Gate (WP-429 Контур A): возможный <дубль/противоречие>
+Кандидат: <id/name>
+Конфликт с: <neighbor_id> «<neighbor_name>»
+Оценка: <verdict> (уверенность ~<confidence>%)
+Причина: <reasoning>
+
+Варианты:
+  А. Reject кандидата → паттерн в feedback-log: «дубль <neighbor_id>»
+  Б. Accept как уточнение → добавить `see_also: [<neighbor_id>]` в frontmatter
+  В. Accept как замена → добавить `supersedes: <neighbor_id>` + пометить старый как superseded
+R15 выбирает вариант:
+```
+
+Дождаться ответа R15. Обновить `decision` и frontmatter кандидата согласно выбору.
+
+**Если `knowledge_search` недоступен** (MCP offline, ошибка сети):
+- Пометить в отчёте: `semantic_gate: skipped (MCP unavailable)`
+- Перейти к Шагу 5 без блокировки.
+
+**CLI-эквивалент** (для batch/автоматизации):
+```bash
+cd ~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}
+OPENROUTER_API_KEY="sk-or-v1-..." WP429_DB_ID=3 WP429_TABLE=concept_graph.concepts \
+  python3 inbox/WP-429/f2-poc/detector.py --check-candidate \
+    --name "<имя кандидата>" \
+    --text "<текст кандидата>"
+```
+
+### Шаг 5. Запись в Pack и коммит
 
 ### 5а. Записать файл
 
@@ -168,12 +269,12 @@ Pack-реестры обычно в:
 ### 5г. Коммит
 
 ```bash
-git add <target_path> [MAP если был] && git commit -m "feat(KE apply): <id> — <краткое название>"
+git add <target_path> [MAP если был] && git commit -m "feat(KE apply): <id> — <краткое название>" -- <target_path> [MAP если был]
 ```
 
 Репо для коммита: то же, что `target_path` (PACK-digital-platform, PACK-personal и т.д.)
 
-## Шаг 6. Обновить status отчёта
+### Шаг 6. Обновить status отчёта
 
 Правила:
 - Все кандидаты resolved (accept/reject/defer) → `applied` если ≥1 applied, иначе `rejected` если все reject, `deferred` если есть defer без applied.
@@ -182,7 +283,7 @@ git add <target_path> [MAP если был] && git commit -m "feat(KE apply): <i
 
 Обновить `status:` в frontmatter отчёта и сохранить файл.
 
-## Шаг 7. Итоговый отчёт
+### Шаг 7. Итоговый отчёт
 
 Вывести сводку:
 ```
@@ -194,7 +295,9 @@ git add <target_path> [MAP если был] && git commit -m "feat(KE apply): <i
   Статус отчёта: applied / partially-applied / rejected / deferred
 ```
 
-## Состояния отчёта (справка)
+## Appendix
+
+### Состояния отчёта (справка)
 
 | Статус | Очистка Session-Prep |
 |--------|----------------------|
@@ -205,7 +308,7 @@ git add <target_path> [MAP если был] && git commit -m "feat(KE apply): <i
 | `rejected` | Удалять через 7 дней |
 | `no-pending` | Удалять через 7 дней |
 
-## Интеграция в рабочий процесс
+### Интеграция в рабочий процесс
 
 **DayPlan (ежедневный обзор):** Шаблон DayPlan содержит секцию «Наработки ИИ → Экстрактор» с обзором:
 - N pending-review отчётов
@@ -220,3 +323,6 @@ git add <target_path> [MAP если был] && git commit -m "feat(KE apply): <i
 2. Day Open → секция «Наработки ИИ → Экстрактор» в DayPlan показывает N ожидающих
 3. Close → `protocol-close.checks.md` напоминает о SLA
 4. Пользователь запускает `/apply-captures` в отдельной сессии → R15 разбор → запись в Pack
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

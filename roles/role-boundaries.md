@@ -76,7 +76,7 @@
 
 ## Источники
 
-- **Диагност:** `roles/strategist/prompts/diagnose-iwe.md` (если есть) или `/diagnose-iwe` skill
+- **Диагност:** `roles/strategist/prompts/diagnose.md` (если есть) или `/diagnose` skill
 - **Навигатор:** `docs/Strategy.md` §«Квартал»
 - **Стратег:** `roles/strategist/prompts/strategy-session-weekly.md`, `week-review.md`, `day-plan.md`
 - **Handoff паттерн:** `docs/inter-agent-handoff.md` (cross-agent, не cross-role)

@@ -1,6 +1,6 @@
 ---
 name: wp-new
-description: Create a new Work Product (WP) with atomic registration in 5 places. Use when a new task appears that is not in the week plan.
+description: Создание нового рабочего продукта (РП) с записью в 5 мест атомарно. Используй когда появляется новая задача, которой нет в плане недели.
 argument-hint: "[название РП]"
 version: 1.0.0
 layer: L1
@@ -11,6 +11,11 @@ triggers:
 routing:
   executor: haiku
   deterministic: false
+agents: single
+interaction: multi-step
+gates_required: []
+gates_enforced: []
+gates_rationale: "операционный скилл; WP Gate применим только при создании нового РП, не для операционных вызовов"
 ---
 
 # Создание нового РП
@@ -18,6 +23,10 @@ routing:
 Новый рабочий продукт: $ARGUMENTS
 
 ---
+
+## When to use
+
+Создание нового рабочего продукта (РП) с записью в 5 мест атомарно. Используй когда появляется новая задача, которой нет в плане недели.
 
 ## ⛔ БЛОКИРУЮЩЕЕ ПРАВИЛО (Шаг 0): явное согласие пользователя
 
@@ -41,6 +50,8 @@ routing:
 
 ---
 
+## Algorithm
+
 ## Шаг 1. Сбор информации
 
 Запроси или определи:
@@ -48,58 +59,76 @@ routing:
 - **Репо:** целевой репозиторий
 - **Бюджет:** оценка в часах
 - **Приоритет:** критический / высокий / средний / низкий
-- **Результат месяца:** (только для РП ≥3h) к какому результату месяца (R1, R2, …) привязан? Допустимые ответы: R{N}, поддержка, off-plan. Source-of-truth маппинга: `DS-strategy/docs/Strategy.md` → «РП → Результаты»
+- **Результат месяца:** (только для РП ≥3h) к какому результату месяца (R1, R2, …) привязан? Допустимые ответы: R{N}, поддержка, off-plan. Source-of-truth маппинга: `${IWE_GOVERNANCE_REPO:-DS-strategy}/docs/Strategy.md` → «РП → Результаты»
 - **Критерий готовности:** что должно получиться
 
 ## Шаг 2. Нумерация
 
-Найди последний номер РП в `MEMORY.md` → следующий порядковый номер. Только целые числа (74, 75…). Буквенные суффиксы (73a, 73b) запрещены.
+Найди последний номер РП в `docs/WP-REGISTRY.md` → следующий порядковый номер. Только целые числа (74, 75…). Буквенные суффиксы (73a, 73b) запрещены.
 
 ## Шаг 3. Проверка бюджета
 
 Прочитай текущий бюджет недели из WeekPlan. Предупреди если превышение.
 
-## Шаг 4. Атомарная запись в 6 мест
+## Шаг 4. Запись — запустить `scripts/create-wp.sh`
 
-1. **MEMORY.md** → таблица «РП текущей недели» (новая строка)
-2. **DS-strategy/docs/WP-REGISTRY.md** → новая строка (сортировка: от последнего к первому)
-3. **DS-strategy/current/WeekPlan W{N}...** → таблица РП (новая строка)
-4. **DS-strategy/docs/Strategy.md** → таблица «РП → Результаты» (только для РП ≥3h, добавить строку с маппингом)
-5. **DS-strategy/inbox/WP-{N}-{slug}.md** → context file
-6. **DS-strategy/current/active-wp.md** → пересобрать скриптом `python3 scripts/build-active-wp.py` (derived-файл из WP-REGISTRY.md; pre-commit hook блокирует коммит при drift)
+Все шаги ниже автоматизированы скриптом `scripts/create-wp.sh`. Скрипт пишет в 5 мест:
 
+1. **`inbox/WP-{N}-{slug}.md`** → context file
+2. **`archive/wp-contexts/WP-{N}-{slug}.md`** → заготовка §Закрытия (stub с frontmatter)
+3. **`docs/WP-REGISTRY.md`** → новая строка таблицы
+4. **`current/WeekPlan W{N}…md`** → новая строка в таблице РП
+5. **`current/active-wp.md`** → пересобирается автоматически (`build-active-wp.py`)
+
+**Вручную после скрипта:**
+- **Linear issue** — через MCP: `create_issue title='WP-{N} {Название}' teamId=TSR`
+- **`docs/Strategy.md` § «РП → Результаты»** — только для РП ≥3h. Передать `--result R{N}` скрипту для автовставки; без флага — добавить вручную.
+
+**Синтаксис скрипта:**
+```bash
+touch ~/.claude/state/wp-consent-{N}   # WP Gate — обязательно перед запуском
+bash scripts/create-wp.sh \
+  --title "Название РП" \
+  --budget 5h \
+  --priority P2 \
+  --result R3 \        # необязательно; если ≥3h — передать для автовставки в Strategy.md
+  --repo "DS-repo"     # необязательно
+```
+
+**Шаблон context file** (создаётся скриптом автоматически):
 ```markdown
 ---
 wp: {N}
 title: {название}
 status: pending
+priority: {P1-P5}
+budget: {Nh}
 created: {YYYY-MM-DD}
-source: {откуда пришла задача}
-verification_class: {closed-loop | open-loop | problem-framing}
+last_session: {YYYY-MM-DD}
+related: []
 ---
 
 # WP-{N}: {название}
 
-## Описание
-{что и зачем}
-
+## Проблема
 ## Артефакт
-{конкретный результат}
-
-## Контекст
-{связи, зависимости}
-
-## Критерий готовности
-{чеклист}
-
-## Бюджет
-~{N}h
-
+## Связки с РП
+## Фазы реализации
 ## Осталось
-Всё — не начато.
 ```
 
 ## Шаг 5. Подтверждение
 
-Выведи: *«РП #{N} создан. Записан в MEMORY, Registry, WeekPlan, Strategy (маппинг), context file, active-wp пересобран.»*
-Если РП <3h: *«РП #{N} создан. Записан в MEMORY, Registry, WeekPlan, context file, active-wp пересобран. (маппинг к результату не требуется, бюджет <3h)»*
+Выведи: *«РП #{N} создан. Скрипт записал в 5 мест: context file, archive stub, Registry, WeekPlan, active-wp пересобран. Linear — вручную.»*
+Если ≥3h и `--result` не передан: добавить «+ добавить маппинг в Strategy.md вручную».
+
+```bash
+# Postcondition check — substitute {N} with the real WP number before running
+WP_NUM={N}   # real number from Step 2
+grep -q "WP-${WP_NUM}" "{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/WP-REGISTRY.md" \
+  && echo "✅ WP-${WP_NUM} найден в WP-REGISTRY.md" \
+  || echo "❌ WP-${WP_NUM} НЕ найден — проверить вывод create-wp.sh выше"
+```
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->

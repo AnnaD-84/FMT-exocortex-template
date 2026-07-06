@@ -33,9 +33,34 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/close-gate-reminder.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/inject-role-prefixes.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/lazy-context-loader.sh"
+          }
+        ]
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Read|Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pull-on-touch.sh"
+          }
+        ]
+      },
       {
         "matcher": "Edit|Write",
         "hooks": [

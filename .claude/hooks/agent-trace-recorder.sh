@@ -43,7 +43,26 @@ else
     NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     AGENT_ID="${CLAUDE_AGENT_ID:-claude-opus-4-7}"
     TASK_ID="${CLAUDE_TASK_ID:-}"
-    WP_ID=$(echo "$CWD" | grep -oE "WP-[0-9]+" | head -1 || echo "")
+    # Улучшенный WP detection — пробуем несколько источников (WP-295 fix)
+    WP_ID=""
+    # 1. Из CLAUDE_TASK_ID (может содержать WP-xxx)
+    if [ -n "${CLAUDE_TASK_ID:-}" ]; then
+        WP_ID=$(echo "$CLAUDE_TASK_ID" | grep -oE "WP-[0-9]+" | head -1 || echo "")
+    fi
+    # 2. Из текущей директории
+    if [ -z "$WP_ID" ] && [ -n "$CWD" ]; then
+        WP_ID=$(echo "$CWD" | grep -oE "WP-[0-9]+" | head -1 || echo "")
+    fi
+    # 3. Из git branch (если CWD — git repo)
+    if [ -z "$WP_ID" ] && [ -n "$CWD" ] && [ -d "$CWD/.git" ]; then
+        BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
+        WP_ID=$(echo "$BRANCH" | grep -oE "WP-[0-9]+" | head -1 || echo "")
+    fi
+    # 4. Из последних коммитов (heuristic: часто коммит начинается с WP-xxx)
+    if [ -z "$WP_ID" ] && [ -n "$CWD" ] && [ -d "$CWD/.git" ]; then
+        RECENT_COMMIT=$(cd "$CWD" && git log -1 --pretty=%s 2>/dev/null || echo "")
+        WP_ID=$(echo "$RECENT_COMMIT" | grep -oE "WP-[0-9]+" | head -1 || echo "")
+    fi
     CTX_SUMMARY=""
     [ -n "$TASK_ID" ] && CTX_SUMMARY="task:${TASK_ID}"
 
@@ -72,18 +91,36 @@ case "$HOOK_EVENT" in
                 NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
                 TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // {}' 2>/dev/null || echo "{}")
                 TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}' 2>/dev/null || echo "{}")
+
+                # Sanitize tool_response: ensure valid JSON and cap size to avoid malformed NDJSON.
+                if ! echo "$TOOL_RESPONSE" | jq -e . >/dev/null 2>&1; then
+                    TOOL_RESPONSE='{"truncated":true,"reason":"invalid_json"}'
+                fi
+                # PostgreSQL JSON rejects NULL byte \u0000; strip it from tool_response.
+                TOOL_RESPONSE=$(echo "$TOOL_RESPONSE" | jq -c 'walk(if type == "string" then gsub("\u0000"; "") else . end)' 2>/dev/null || echo "$TOOL_RESPONSE")
+                raw_response_size=$(echo -n "$TOOL_RESPONSE" | wc -c | tr -d ' ')
+                if [ "$raw_response_size" -gt 8192 ]; then
+                    TOOL_RESPONSE=$(echo "$TOOL_RESPONSE" | jq -c --argjson size "$raw_response_size" \
+                        '{truncated: true, original_size_bytes: $size, preview: (. | tostring | .[0:1024])}' \
+                        2>/dev/null || echo '{"truncated":true,"reason":"cap_failed"}')
+                fi
+
                 # input_hash = sha256(canonicalized tool_input)
                 INPUT_HASH="sha256:$(echo -n "$TOOL_INPUT" | shasum -a 256 | cut -d' ' -f1)"
-                RESPONSE_SIZE=$(echo -n "$TOOL_RESPONSE" | wc -c | tr -d ' ')
+                # response_size_bytes = TRUE pre-cap size (capped object would report ~80 bytes).
+                RESPONSE_SIZE="$raw_response_size"
 
                 jq -nc \
                     --arg sid "$SESSION_UUID" --arg tn "$TOOL_NAME" --arg ih "$INPUT_HASH" \
+                    --argjson tin "$TOOL_INPUT" --argjson tres "$TOOL_RESPONSE" \
                     --argjson rsz "$RESPONSE_SIZE" --arg ts "$NOW" \
                     '{event_type: "agent_tool_called", schema_version: "v1", emitted_at: $ts, payload: {
                         session_id: $sid,
                         decision_id: null,
                         tool_name: $tn,
                         input_hash: $ih,
+                        input_payload: $tin,
+                        response: $tres,
                         response_size_bytes: $rsz,
                         called_at: $ts
                     }}' >> "$NDJSON" 2>/dev/null || true

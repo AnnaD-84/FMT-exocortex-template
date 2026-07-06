@@ -1,5 +1,5 @@
 {
-  "version": "0.35.3",
+  "version": "0.35.5",
   "description": "Манифест платформенных файлов FMT-exocortex-template. Используется update.sh для доставки обновлений.",
   "files": [
     {
@@ -48,10 +48,19 @@
       "path": ".claude/hooks/extensions-gate.sh"
     },
     {
+      "path": ".claude/hooks/inject-code-style.sh"
+    },
+    {
       "path": ".claude/hooks/inject-communication-style.sh"
     },
     {
       "path": ".claude/hooks/inject-fault-profile.sh"
+    },
+    {
+      "path": ".claude/hooks/inject-role-prefixes.sh"
+    },
+    {
+      "path": ".claude/hooks/lazy-context-loader.sh"
     },
     {
       "path": ".claude/hooks/memory-exocortex-sync.sh"
@@ -72,10 +81,13 @@
       "path": ".claude/hooks/protocol-stop-gate.sh"
     },
     {
+      "path": ".claude/hooks/pull-on-touch.sh"
+    },
+    {
       "path": ".claude/hooks/response-clarity-hook.sh"
     },
     {
-      "path": ".claude/hooks/wakatime-heartbeat.sh"
+      "path": ".claude/hooks/rule-engine.sh"
     },
     {
       "path": ".claude/hooks/wp-gate-reminder.sh"
@@ -102,6 +114,12 @@
       "path": ".claude/parity-contract.yaml"
     },
     {
+      "path": ".claude/process-pattern-catalog.yaml"
+    },
+    {
+      "path": ".claude/rules-lazy/role-prefixes-full.md"
+    },
+    {
       "path": ".claude/rules/distinctions.md"
     },
     {
@@ -118,6 +136,9 @@
     },
     {
       "path": ".claude/scripts/check-index-health.py"
+    },
+    {
+      "path": ".claude/scripts/generate-rules-registry.py"
     },
     {
       "path": ".claude/scripts/load-extensions.sh"
@@ -147,10 +168,16 @@
       "path": ".claude/skills/archgate/SKILL.md"
     },
     {
+      "path": ".claude/skills/artifactor/SKILL.md"
+    },
+    {
       "path": ".claude/skills/audit-docs/SKILL.md"
     },
     {
       "path": ".claude/skills/audit-installation/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/author-mode/SKILL.md"
     },
     {
       "path": ".claude/skills/bottleneck-pick/SKILL.md"
@@ -168,7 +195,16 @@
       "path": ".claude/skills/day-close/SKILL.md"
     },
     {
+      "path": ".claude/skills/day-close/day-close-details.md"
+    },
+    {
+      "path": ".claude/skills/day-close/day-close/SKILL.md"
+    },
+    {
       "path": ".claude/skills/day-open/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/day-open/day-open-details.md"
     },
     {
       "path": ".claude/skills/day-open/templates.md"
@@ -177,7 +213,7 @@
       "path": ".claude/skills/decompose/SKILL.md"
     },
     {
-      "path": ".claude/skills/diagnose-iwe/SKILL.md"
+      "path": ".claude/skills/diagnose/SKILL.md"
     },
     {
       "path": ".claude/skills/discovery-session/SKILL.md"
@@ -189,7 +225,13 @@
       "path": ".claude/skills/fpf/SKILL.md"
     },
     {
+      "path": ".claude/skills/integration-gate/SKILL.md"
+    },
+    {
       "path": ".claude/skills/iwe-bug-report/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/iwe-restore/SKILL.md"
     },
     {
       "path": ".claude/skills/iwe-rules-review/SKILL.md"
@@ -204,10 +246,10 @@
       "path": ".claude/skills/kimi-peer-writer/SKILL.md"
     },
     {
-      "path": ".claude/skills/kimi-peer-writer/modes.md"
+      "path": ".claude/skills/lesson-close/SKILL.md"
     },
     {
-      "path": ".claude/skills/lesson-close/SKILL.md"
+      "path": ".claude/skills/local-llm/SKILL.md"
     },
     {
       "path": ".claude/skills/month-close/SKILL.md"
@@ -231,9 +273,6 @@
       "path": ".claude/skills/peer-conversation/SKILL.md"
     },
     {
-      "path": ".claude/skills/peer-conversation/modes.md"
-    },
-    {
       "path": ".claude/skills/personal-guide-render/SKILL.md"
     },
     {
@@ -255,6 +294,27 @@
       "path": ".claude/skills/setup-wakatime/SKILL.md"
     },
     {
+      "path": ".claude/skills/skill-creator/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/skill-creator/assets/skill-scaffold-full.md"
+    },
+    {
+      "path": ".claude/skills/skill-creator/assets/skill-scaffold-minimal.md"
+    },
+    {
+      "path": ".claude/skills/skill-creator/scripts/batch-fix-skills.py"
+    },
+    {
+      "path": ".claude/skills/skill-creator/scripts/content-audit.sh"
+    },
+    {
+      "path": ".claude/skills/skill-creator/scripts/scaffold-init.sh"
+    },
+    {
+      "path": ".claude/skills/skill-creator/scripts/verify-skill.sh"
+    },
+    {
       "path": ".claude/skills/strategy-session/SKILL.md"
     },
     {
@@ -262,6 +322,12 @@
     },
     {
       "path": ".claude/skills/transcribe/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/vdv/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/vdv/test_cases.md"
     },
     {
       "path": ".claude/skills/verify/SKILL.md"
@@ -282,10 +348,22 @@
       "path": ".claude/skills/week-close/SKILL.md"
     },
     {
+      "path": ".claude/skills/week-close/week-close/SKILL.md"
+    },
+    {
       "path": ".claude/skills/wp-new/SKILL.md"
     },
     {
+      "path": ".claude/styles/p05-core.md"
+    },
+    {
+      "path": ".claude/styles/s0-core.md"
+    },
+    {
       "path": ".claude/sync-manifest.yaml"
+    },
+    {
+      "path": ".claude/templates/drr-template.md"
     },
     {
       "path": ".githooks/pre-commit"
@@ -322,6 +400,9 @@
     },
     {
       "path": "docs/IWE-HELP.md"
+    },
+    {
+      "path": "docs/KIMI-SETUP.md"
     },
     {
       "path": "docs/LEARNING-PATH.md"
@@ -436,6 +517,9 @@
     },
     {
       "path": "extensions/agent-inbox/templates/soak-verify.md"
+    },
+    {
+      "path": "extensions/agentigore.sample"
     },
     {
       "path": "extensions/day-close.checks.session-orphans.md"
@@ -867,10 +951,40 @@
       "path": "sessions/00-index.md"
     },
     {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/00-writer.md"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/01-peer.md"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/02-writer.md"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/03-peer.md"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/meta.yaml"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/report.md"
+    },
+    {
       "path": "setup.sh"
     },
     {
+      "path": "setup/validate-template.sh"
+    },
+    {
       "path": "shared/rubrics/form-089.yaml"
+    },
+    {
+      "path": "translation-manifest.yaml"
+    },
+    {
+      "path": "translation/en-doc-style.md"
+    },
+    {
+      "path": "translation/glossary-v0.1.csv"
     },
     {
       "path": "update.sh"
@@ -882,10 +996,12 @@
     "docs/developer/README.md",
     "docs/developer/card-template.md",
     "docs/developer/developer-guide.md",
+    "docs/developer/testing-as-spec.md",
     "docs/maintaining-skills.md",
     "docs/release-audit-log.md",
     "promotion-status.yaml",
     "scripts/active-wp-sweep.sh",
+    "scripts/add-skill-markers.sh",
     "scripts/agent-dashboard.py",
     "scripts/agent_fault_remind.py",
     "scripts/agent_fault_remind.sh",
@@ -894,8 +1010,10 @@
     "scripts/backup-icloud.sh",
     "scripts/changelog-append.sh",
     "scripts/changelog-flush.sh",
+    "scripts/check-component-parity.sh",
     "scripts/check-dirty-repos.sh",
     "scripts/check-manifest-coverage.py",
+    "scripts/check-manifest-rename-coverage.py",
     "scripts/check-open-sessions.sh",
     "scripts/check-script-collisions.sh",
     "scripts/check-setup-update-parity.sh",
@@ -911,9 +1029,10 @@
     "scripts/day-open-scaffold.sh",
     "scripts/day-open-smoke-extended.sh",
     "scripts/day-open-smoke.sh",
+    "scripts/delivery_checks.py",
     "scripts/fmt-critical-alert.sh",
     "scripts/generate-catalogs.py",
-    "scripts/generate-diagnose-iwe-skill.py",
+    "scripts/generate-diagnose-skill.py",
     "scripts/generate-executor-catalog.py",
     "scripts/generate-helper-catalog.py",
     "scripts/generate-skills-catalog.sh",
@@ -958,6 +1077,7 @@
     "scripts/smoke-clean-env.sh",
     "scripts/staging-audit.sh",
     "scripts/style-check-post-run.sh",
+    "scripts/style-promote.sh",
     "scripts/sync-agent-instructions.sh",
     "scripts/sync-communication-style.py",
     "scripts/sync-communication-style.yaml.example",
@@ -967,9 +1087,16 @@
     "scripts/test-route-task.sh",
     "scripts/tests/conftest.py",
     "scripts/tests/test_agent_dashboard.py",
+    "scripts/tests/test_delivery_content.py",
+    "scripts/tests/test_delivery_formal.py",
+    "scripts/tests/test_skill_promote.py",
+    "scripts/tests/test_translate_delta.py",
+    "scripts/tests/test_translate_parse.py",
+    "scripts/translate.py",
     "scripts/validate-fmt-scripts.sh",
     "scripts/validate-skill.sh",
     "scripts/verify-manifest.sh",
+    "scripts/verify-template-integrity.sh",
     "scripts/week-draft-append.sh",
     "scripts/week-draft-init.sh"
   ],
@@ -1029,6 +1156,18 @@
     {
       "path": "strategist-agent/scripts/strategist.sh",
       "reason": "strategist-agent directory removed"
+    },
+    {
+      "path": "roles/strategist/WORKPLAN.md",
+      "reason": "hub-and-spoke antipattern removed in WP-283 2026-05-11"
+    },
+    {
+      "path": ".claude/hooks/wakatime-heartbeat.sh",
+      "reason": "removed from platform in v0.34 — user-installed hook only"
+    },
+    {
+      "path": ".claude/skills/peer-conversation/modes.md",
+      "reason": "removed from platform — moved to peer-conversation skill internals"
     }
   ]
 }

@@ -76,47 +76,30 @@ if [ "$DO_INJECT" -eq 0 ]; then
   exit 0
 fi
 
-L0_FILE="$PROJECT_DIR/PACK-digital-platform/pack/digital-platform/02-domain-entities/communication-style-base.md"
-L1_FILE="$PROJECT_DIR/${IWE_GOVERNANCE_REPO:-DS-strategy}/memory/communication-style-author.md"
+# Контент: диспетчер реестра (если доступен) → файл-снимок s0-core.md → пропуск.
+# Диспетчер: WP-412 Ф6 (тонкий хук с каскадом L0+L1+author). Путь к нему через PROJECT_DIR.
+# Файл-снимок: WP-412 Ф11 (FMT-fallback, самодостаточен). Путь через BASH_SOURCE — работает в env -i.
+# Рантайм-механика (переинъекция, state) остаётся в хуке. Откат: git revert.
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+S0_CORE="$HOOK_DIR/../styles/s0-core.md"
 
-if [ ! -f "$L0_FILE" ]; then
-  echo '{}'
-  exit 0
+DISPATCHER="$PROJECT_DIR/PACK-rhetoric/pack/language-style/registry/dispatcher.py"
+if [ -f "$DISPATCHER" ]; then
+  FRAGMENT=$(python3 "$DISPATCHER" --event userpromptsubmit-ide --quiet --no-cache 2>/dev/null)
 fi
 
-# Убрать YAML frontmatter (всё до второго '---')
-strip_fm() {
-  if head -1 "$1" 2>/dev/null | grep -q '^---$'; then
-    awk 'NR==1{next} /^---$/ && !d {d=1; next} d{print}' "$1"
-  else
-    cat "$1"
-  fi
-}
-
-L0_BODY=$(strip_fm "$L0_FILE")
-if [ -z "$L0_BODY" ]; then
-  echo '{}'
-  exit 0
+# Если диспетчер не дал контент — читаем файл-снимок (обрезаем frontmatter между --- --- )
+if [ -z "${FRAGMENT:-}" ] && [ -f "$S0_CORE" ]; then
+  FRAGMENT=$(awk '/^---/{n++; if(n==2){found=1; next}} found' "$S0_CORE" 2>/dev/null)
 fi
 
-L1_BODY=""
-if [ -f "$L1_FILE" ]; then
-  L1_BODY=$(strip_fm "$L1_FILE")
-fi
+[ -n "${FRAGMENT:-}" ] || { echo '{}'; exit 0; }   # оба источника пусты/упали → пропуск (safe)
 
 CONTEXT="## 🗣 Разговорный стиль IWE (S0 база + S1 автор) — применять при ответе человеку
 
 Источник истины: \`DP.SC.050\` (Pack). Канал-детектор: технический режим — для стенограмм/commit/PR; «на пальцах» — для чата с пилотом и §1-§4 синтеза report.md.
 
-$L0_BODY"
-
-if [ -n "$L1_BODY" ]; then
-  CONTEXT="$CONTEXT
-
-### S1 — авторские надстройки пилота (additive-only, не отменяют S0)
-
-$L1_BODY"
-fi
+$FRAGMENT"
 
 # Записать state: текущий ход = последний впрыск, запомнить байты стенограммы
 mkdir -p "$STATE_DIR"

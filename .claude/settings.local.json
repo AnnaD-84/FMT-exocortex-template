@@ -31,5 +31,9 @@
       "mcp__ddt__read_digital_twin",
       "mcp__ddt__write_digital_twin"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "iwe-knowledge"
+  ],
+  "enableAllProjectMcpServers": true
 }

@@ -1,10 +1,21 @@
 ---
 name: verify
-description: Verify an artifact against a Pack standard. Loads VR.R.001 (Verifier) role with context isolation — checks the result, not the creation process.
+description: Верификация артефакта по эталону из Pack. Загружает роль VR.R.001 (Верификатор) с context isolation — проверяет результат, а не процесс создания.
 argument-hint: "[code|archgate|capture|wp|chain|adversarial|subsection|section|guide|auto] [путь или id]"
+version: 1.0.0
+layer: L1
+status: active
+triggers:
+  slash: [/verify]
+  phrases: []
 routing:
   executor: sonnet
   deterministic: false
+agents: single
+interaction: multi-step
+gates_required: []
+gates_enforced: []
+gates_rationale: "операционный скилл; WP Gate применим только при создании нового РП, не для операционных вызовов"
 ---
 
 # Верификация артефакта
@@ -14,6 +25,12 @@ routing:
 > **Архитектура:** Ядро (Pack, фиксированное) + Контекст (переменный) — AS.D.004.
 
 Аргументы: $ARGUMENTS
+
+## When to use
+
+Верификация артефакта по эталону из Pack. Загружает роль VR.R.001 (Верификатор) с context isolation — проверяет результат, а не процесс создания.
+
+## Algorithm
 
 ## Шаг 0. Определить тип проверки
 
@@ -68,13 +85,10 @@ routing:
 - Модель sub-agent'а: Sonnet
 
 **Для `wp`:**
-- Прочитать WP context file (`DS-strategy/inbox/WP-{N}-*.md`)
+- Прочитать WP context file (`{{GOVERNANCE_REPO}}/inbox/WP-{N}-*.md`)
 - Прочитать артефакт РП
 - Передать sub-agent'у: артефакт + критерии done + чеклист wp
-- Модель sub-agent'а: по verification_class:
-  - `trivial` → Haiku
-  - `closed-loop` / `open-loop` → Sonnet
-  - `problem-framing` → Opus
+- Модель sub-agent'а: по verification_class
 
 **Для `chain` (CoVe — Chain-of-Verification, Meta ACL 2024):**
 - Прочитать `git diff` изменённых файлов
@@ -304,3 +318,6 @@ Sub-agent возвращает verdict:
 - **Принять** → продолжить работу
 - **Исправить** → внести изменения по рекомендациям
 - **Отклонить verdict** → аргументировать почему (→ feedback для обучения)
+
+<!-- USER-SPACE -->
+<!-- /USER-SPACE -->
