@@ -116,7 +116,7 @@ Discrepancy found → **Report to pilot, do not silently fix.** "Found drift: [w
 ## Working Directory
 `{{HOME_DIR}}/IWE/`
 ## Status Reporting
-Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe (опциональный, не установлен): `scripts/agent-status-report.sh` вызывает только Kimi из `kimi-peer-adapter.sh` с проверкой на существование; для Claude Stop-хук его не подключает — полагаться на primary.
+Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe (WP-18): `.claude/scripts/agent-status-report.sh <agent> <status> [task] [files-csv]` ставит статус на сервере, если агент не вызвал primary. Подключён к Claude Stop-хуку (`.claude/settings.json` → `claude-code idle`) и к Kimi (`kimi-peer-adapter.sh`). Без OAuth-токена → тихий выход 0 (спит до настройки). Обещание/роль — `${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/WP-18.md`.
 ## WP-REGISTRY Naming — CRITICAL
 **Колонка «Название» = ТОЛЬКО имя артефакта ≤80 символов.** Запрещено: даты, SHA, метрики, статусы фаз, ссылки. Итог → `archive/wp-contexts/WP-NNN.md §Закрытие`. Статус фаз → frontmatter `inbox/WP-NNN.md`.
 ## WP Context Scope — Umbrella РП

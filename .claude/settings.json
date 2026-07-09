@@ -138,6 +138,14 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/capture-bus.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/agent-status-report.sh claude-code idle"
+          }
+        ]
       }
     ],
     "PreCompact": [

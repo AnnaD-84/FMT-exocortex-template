@@ -271,7 +271,7 @@ fi
 echo "$OUR_PID" > "$LOCK_FILE"
 
 # agent-status-report.sh (optional — guard on existence for standalone installs)
-_IWE_ARS="$HOME/IWE/scripts/agent-status-report.sh"
+_IWE_ARS="$HOME/IWE/.claude/scripts/agent-status-report.sh"
 
 # Cleanup: удалить lock и temp при любом выходе
 cleanup_peer() {

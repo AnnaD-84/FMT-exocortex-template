@@ -138,6 +138,9 @@
       "path": ".claude/runtime-overlay.yaml"
     },
     {
+      "path": ".claude/scripts/agent-status-report.sh"
+    },
+    {
       "path": ".claude/scripts/check-index-health.py"
     },
     {
@@ -1044,6 +1047,7 @@
     "scripts/generate-catalogs.py",
     "scripts/generate-day-report.sh",
     "scripts/generate-diagnose-skill.py",
+    "scripts/generate-diagnose-iwe-skill.py",
     "scripts/generate-executor-catalog.py",
     "scripts/generate-helper-catalog.py",
     "scripts/generate-skills-catalog.sh",
