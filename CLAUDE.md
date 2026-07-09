@@ -116,7 +116,7 @@ Discrepancy found → **Report to pilot, do not silently fix.** "Found drift: [w
 ## Working Directory
 `{{HOME_DIR}}/IWE/`
 ## Status Reporting
-Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe: Stop-хук → `scripts/agent-status-report.sh`.
+Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe (опциональный, не установлен): `scripts/agent-status-report.sh` вызывает только Kimi из `kimi-peer-adapter.sh` с проверкой на существование; для Claude Stop-хук его не подключает — полагаться на primary.
 ## WP-REGISTRY Naming — CRITICAL
 **Колонка «Название» = ТОЛЬКО имя артефакта ≤80 символов.** Запрещено: даты, SHA, метрики, статусы фаз, ссылки. Итог → `archive/wp-contexts/WP-NNN.md §Закрытие`. Статус фаз → frontmatter `inbox/WP-NNN.md`.
 ## WP Context Scope — Umbrella РП
