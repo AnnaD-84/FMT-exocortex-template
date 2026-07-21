@@ -95,6 +95,9 @@ for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
         hits=""
         while IFS= read -r f; do
             case "$f" in
+                guide-kit/*) continue ;;  # vendored copy is derived-only (WP-483) — checked by its upstream CI
+            esac
+            case "$f" in
                 *.md|*.sh|*.py|*.json|*.plist|*.yaml) ;;
                 *) continue ;;
             esac
@@ -112,7 +115,7 @@ for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
         count=$(grep -rn "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
                 --include="*.py" --include="*.json" --include="*.plist" --include="*.yaml" \
                 --exclude='validate-template.sh' --exclude='LEARNING-PATH.md' \
-                --exclude='CHANGELOG.md' 2>/dev/null \
+                --exclude='CHANGELOG.md' --exclude-dir='guide-kit' 2>/dev/null \
                 | grep -v 'github.com/' | grep -v 'docs/adr/' | wc -l | tr -d ' ' || true)
     fi
     if [ "$count" -gt 0 ]; then
@@ -124,7 +127,7 @@ for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
             grep -rn "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
                 --include="*.py" --include="*.json" --include="*.plist" \
                 --exclude='validate-template.sh' --exclude='LEARNING-PATH.md' \
-                --exclude='CHANGELOG.md' 2>/dev/null \
+                --exclude='CHANGELOG.md' --exclude-dir='guide-kit' 2>/dev/null \
                 | grep -v 'github.com/' | grep -v 'docs/adr/' | head -3 || true
         fi
         CHECK1_FAIL=1
@@ -185,14 +188,21 @@ if [ "$MODE" = "staged" ] && [ "$(cd "$TEMPLATE_DIR" && git status --porcelain 2
 fi
 [ "$CHECK1_FAIL" -eq 0 ] && echo "PASS"
 
+# Общий список расширений для чеков 2 и 3 (issue #247 п.2: count и print раньше
+# сканировали разные наборы --include, из-за чего FAIL (N hits) мог не показать
+# ни одной строки, если попадание было только в *.json/*.plist).
+# --exclude-dir=guide-kit: vendored byte-identical release slice (WP-483) —
+# the CI drift gate forbids in-place edits, so scanning it here would deadlock
+# two blocking gates; its own upstream CI is responsible for content checks.
+HARDCODE_SCAN_INCLUDES=(--include="*.md" --include="*.sh" --include="*.json" --include="*.plist" --exclude-dir="guide-kit")
+
 # 2. Нет захардкоженных /Users/ путей [pristine only]
 # В installed-режиме setup.sh легитимно подставил $WORKSPACE_DIR → /Users/<user>/...
 echo -n "[2/5] Hardcoded /Users/ paths... "
 if [ "$MODE" = "installed" ]; then
     echo "SKIP (installed mode — /Users/ подставлен setup'ом)"
 else
-    count=$(grep -rn '/Users/' "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
-            --include="*.json" --include="*.plist" \
+    count=$(grep -rn '/Users/' "$TEMPLATE_DIR" "${HARDCODE_SCAN_INCLUDES[@]}" \
             --exclude='validate-template.sh' --exclude='setup.sh' \
             --exclude='CHANGELOG.md' 2>/dev/null \
             | grep -v '/Users/\.\.\./' \
@@ -200,7 +210,7 @@ else
             | wc -l | tr -d ' ' || true)
     if [ "$count" -gt 0 ]; then
         echo "FAIL ($count hits)"
-        grep -rn '/Users/' "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
+        grep -rn '/Users/' "$TEMPLATE_DIR" "${HARDCODE_SCAN_INCLUDES[@]}" \
             --exclude='validate-template.sh' --exclude='setup.sh' \
             --exclude='CHANGELOG.md' 2>/dev/null \
             | grep -v '/Users/\.\.\./' \
@@ -217,8 +227,7 @@ echo -n "[3/5] Hardcoded /opt/homebrew paths... "
 if [ "$MODE" = "installed" ]; then
     echo "SKIP (installed mode — CLAUDE_PATH может быть /opt/homebrew/...)"
 else
-    count=$(grep -rn '/opt/homebrew' "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
-            --include="*.json" --include="*.plist" \
+    count=$(grep -rn '/opt/homebrew' "$TEMPLATE_DIR" "${HARDCODE_SCAN_INCLUDES[@]}" \
             --exclude='validate-template.sh' --exclude='setup.sh' \
             --exclude='CHANGELOG.md' 2>/dev/null \
             | grep -v 'README.md' \
@@ -228,7 +237,7 @@ else
             | wc -l | tr -d ' ' || true)
     if [ "$count" -gt 0 ]; then
         echo "FAIL ($count hits)"
-        grep -rn '/opt/homebrew' "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
+        grep -rn '/opt/homebrew' "$TEMPLATE_DIR" "${HARDCODE_SCAN_INCLUDES[@]}" \
             --exclude='validate-template.sh' --exclude='setup.sh' \
             --exclude='CHANGELOG.md' 2>/dev/null \
             | grep -v 'README.md' | grep -v 'PLATFORM-COMPAT.md' \

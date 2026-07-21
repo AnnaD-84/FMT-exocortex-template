@@ -4,13 +4,6 @@
 
 set -e
 
-# Load canonical path variables if launchd/systemd did not inject them.
-# This makes the runner self-contained when invoked outside a fully-sourced shell.
-if [ -f "$HOME/.iwe-paths" ]; then
-    # shellcheck source=/dev/null
-    . "$HOME/.iwe-paths"
-fi
-
 # Предотвращаем сон: -i (idle, работает на батарее) -d (display) -u (user activity)
 # Флаг -s (system sleep) не используем — он НЕ работает на батарее (OBC может переключить профиль)
 # Linux: caffeinate отсутствует — guard через command -v (на Linux достаточно, что cron/systemd сам управляет sleep)
@@ -27,15 +20,6 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 # На сервере (без build-runtime): резолвится через env vars с fallback.
 # IWE_WORKSPACE / IWE_GOVERNANCE_REPO задаются в /etc/iwe/env или ~/.config/aist/env.
 WORKSPACE="${IWE_WORKSPACE:-$HOME/IWE}/${IWE_GOVERNANCE_REPO:-DS-strategy}"
-
-# issue #17: load NOTIFY_SH_PATH from params.yaml if not already set in environment
-if [ -z "${NOTIFY_SH_PATH:-}" ]; then
-    _params="${IWE_WORKSPACE:-$HOME/IWE}/params.yaml"
-    if [ -f "$_params" ]; then
-        _notify_val=$(grep -E '^notify_sh_path:' "$_params" | sed 's/^notify_sh_path:[[:space:]]*//;s/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//' | tr -d '[:space:]')
-        [ -n "$_notify_val" ] && export NOTIFY_SH_PATH="$_notify_val"
-    fi
-fi
 
 # Guard: IWE_GOVERNANCE_REPO mismatch (Claude peer-review, 2026-05-26)
 EXPECTED_GOV=$(grep 'IWE_GOVERNANCE_REPO=' "$HOME/.iwe-paths" 2>/dev/null | sed 's/.*="//;s/"$//' || echo "DS-strategy")
@@ -108,14 +92,7 @@ log() {
 notify() {
     local title="$1"
     local message="$2"
-    # issue #17: NOTIFY_SH_PATH override for Linux/Docker (set in params.yaml or .exocortex.env)
-    if [ -n "${NOTIFY_SH_PATH:-}" ] && [ -x "$NOTIFY_SH_PATH" ]; then
-        "$NOTIFY_SH_PATH" "$title" "$message" 2>/dev/null || true
-    else
-        printf 'display notification "%s" with title "%s"' "$message" "$title" | osascript 2>/dev/null \
-            || notify-send "$title" "$message" 2>/dev/null \
-            || true
-    fi
+    printf 'display notification "%s" with title "%s"' "$message" "$title" | osascript 2>/dev/null || true
 }
 
 notify_telegram() {
@@ -141,15 +118,6 @@ run_claude() {
 
     if [ ! -f "$command_path" ]; then
         log "ERROR: Command file not found: $command_path"
-        log "  PROMPTS_DIR=$PROMPTS_DIR"
-        log "  IWE_TEMPLATE=${IWE_TEMPLATE:-<not set>}"
-        log "  HOME=$HOME"
-        log "  Available prompts:"
-        if [ -d "$PROMPTS_DIR" ]; then
-            ls -1 "$PROMPTS_DIR" >> "$LOG_FILE" 2>&1 || true
-        else
-            log "  (directory does not exist)"
-        fi
         exit 1
     fi
 
@@ -267,9 +235,7 @@ acquire_lock() {
 
 # Читаем strategy_day из конфига (L4 Personal)
 RHYTHM_CONFIG="$HOME/.claude/projects/-Users-$(whoami)-IWE/memory/day-rhythm-config.yaml"
-WEEK_CLOSE_DAY_NAME=$(grep 'week_close_day:' "$RHYTHM_CONFIG" 2>/dev/null | awk '{print $2}' || true)
 STRATEGY_DAY_NAME=$(grep 'strategy_day:' "$RHYTHM_CONFIG" 2>/dev/null | awk '{print $2}' || echo "monday")
-STRATEGY_DAY_NAME="${WEEK_CLOSE_DAY_NAME:-$STRATEGY_DAY_NAME}"
 # Конвертируем имя дня в номер (1=Mon..7=Sun)
 case "$STRATEGY_DAY_NAME" in
     monday)    STRATEGY_DAY_NUM=1 ;;
@@ -304,9 +270,19 @@ case "$1" in
             run_claude "session-prep" "claude-sonnet-4-6"
             notify_telegram "session-prep"
         else
-            log "Morning: running day plan"
-            run_claude "day-plan" "claude-sonnet-4-6"
-            notify_telegram "day-plan"
+            # Canonical Day Open pipeline: deterministic scaffold (reads priorities.yaml,
+            # enforces ТВС section order, runs server-news.sh for «Мир»). The free-form
+            # prompt is fallback ONLY — it ignores priorities.yaml and the scaffold, which
+            # was the root cause of the 2026-06-21 structure/priority drift.
+            log "Morning: running canonical Day Open pipeline"
+            DAY_OPEN_PIPELINE="$WORKSPACE/scripts/day-open-pipeline.sh"
+            if [ -f "$DAY_OPEN_PIPELINE" ] && bash "$DAY_OPEN_PIPELINE" >> "$LOG_FILE" 2>&1; then
+                log "Morning: Day Open pipeline OK (scaffold + llm-fill)"
+            else
+                log "WARN: Day Open pipeline unavailable/failed — fallback to free-form day-plan prompt"
+                run_claude "day-plan" "claude-sonnet-4-6"
+                notify_telegram "day-plan"
+            fi
         fi
         ;;
     "evening")

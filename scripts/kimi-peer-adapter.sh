@@ -271,7 +271,7 @@ fi
 echo "$OUR_PID" > "$LOCK_FILE"
 
 # agent-status-report.sh (optional — guard on existence for standalone installs)
-_IWE_ARS="$HOME/IWE/.claude/scripts/agent-status-report.sh"
+_IWE_ARS="$HOME/IWE/scripts/agent-status-report.sh"
 
 # Cleanup: удалить lock и temp при любом выходе
 cleanup_peer() {
@@ -314,7 +314,7 @@ fi
 
 # === Hindsight L2 retain — writer-only per-turn (opt-in via env) ===
 HINDSIGHT_SCRIPT="$SCRIPT_DIR/hindsight_trigger.py"
-if [ "${IWE_HINDSIGHT_RETAIN:-}" = "1" ] && [ -n "$KIMI_OUTPUT" ] && [ -x "$HINDSIGHT_SCRIPT" ]; then
+if [ "${IWE_HINDSIGHT_RETAIN:-}" = "1" ] && [ -n "$KIMI_OUTPUT" ] && [ -f "$HINDSIGHT_SCRIPT" ]; then
   {
     echo "{\"action\":\"retain\",\"source\":\"kimi-peer\",\"text\":$(echo "$KIMI_OUTPUT" | head -c 4000 | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
     | python3 "$HINDSIGHT_SCRIPT" 2>/dev/null || true

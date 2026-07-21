@@ -63,8 +63,9 @@ fi
 
 if [[ "$MODE" == "--fix" ]]; then
     # Обновляем бейдж в README
-    sed -i.bak \
-        -e "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+/version-$CHANGELOG_VERSION/g" \
+    # -E (не BRE \+): BSD sed на macOS не поддерживает \+ — молча не матчит, 0 замен без ошибки.
+    sed -E -i.bak \
+        -e "s/version-[0-9]+\.[0-9]+\.[0-9]+/version-$CHANGELOG_VERSION/g" \
         "$README"
     rm -f "$README.bak"
     echo "  FIX: README.md обновлен до $CHANGELOG_VERSION"

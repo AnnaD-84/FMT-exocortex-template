@@ -13,7 +13,7 @@
 # Не запускать напрямую — это библиотека.
 [[ "${BASH_SOURCE[0]}" == "${0}" ]] && { echo "[ERROR] promote-common.sh is a library — source it" >&2; exit 1; }
 
-# record_promotion — append запись в promotion-status.yaml (MVP append-only, без локов)
+# record_promotion — append запись в promotion-status.yaml (идемпотентный для незавершённых SHA)
 # Параметры:
 #   $1 artifact_path    — относительный путь от FMT_DIR (например: .claude/skills/bottleneck-pick)
 #   $2 type             — skill|script|hook|rule|protocol|catalog
@@ -58,6 +58,27 @@ updated_at: $now
 # Append-only: новые записи добавляются вниз; редактировать вручную не рекомендуется.
 promotions:
 EOF
+    fi
+
+    # Идемпотентность: если для этого артефакта уже есть незавершённая запись
+    # (пустые source_sha и fmt_sha), не дублировать — обновить only updated_at.
+    # Это covers повторные запуски promote до коммита.
+    if [[ -z "$source_sha" && -z "$fmt_sha" ]]; then
+        local last_pending
+        last_pending=$(grep -n "artifact_path: $artifact_path$" "$status_file" 2>/dev/null | tail -1 | cut -d: -f1 || true)
+        if [[ -n "$last_pending" ]]; then
+            # Проверить, что эта запись имеет пустые SHA
+            local block_end
+            block_end=$((last_pending + 5))
+            local block
+            block=$(sed -n "${last_pending},${block_end}p" "$status_file" 2>/dev/null || true)
+            if echo "$block" | grep -q 'source_sha: ""' && echo "$block" | grep -q 'fmt_sha: ""'; then
+                sed -i.bak "s/^updated_at:.*/updated_at: $now/" "$status_file"
+                rm -f "$status_file.bak"
+                echo "📝 promotion-status.yaml: обновлена существующая незавершённая запись $artifact_path ($type)"
+                return 0
+            fi
+        fi
     fi
 
     # Append запись

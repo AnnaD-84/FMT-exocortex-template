@@ -18,13 +18,16 @@
 set -euo pipefail
 
 # === КОНФИГУРАЦИЯ (настроить при установке) ===
-WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/IWE}"
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" || exit 1
 GOVERNANCE_REPO="${GOVERNANCE_REPO:-${IWE_GOVERNANCE_REPO:-DS-strategy}}"
 DS_STRATEGY="$WORKSPACE_DIR/$GOVERNANCE_REPO"
-# Slug = $HOME с '/' → '-' (macOS: /Users/x → -Users-x; Linux/WSL: /home/x → -home-x).
-# Переопределить можно через env IWE_MEMORY_SRC (например, для нестандартного $HOME).
-HOME_SLUG=$(echo "$HOME" | tr '/' '-')
-MEMORY_SRC="${IWE_MEMORY_SRC:-$HOME/.claude/projects/${HOME_SLUG}-IWE/memory}"
+# Slug derived from WORKSPACE_DIR (not $HOME) so it matches Claude's project key
+# regardless of workspace location. Override via IWE_MEMORY_SRC if needed.
+WORKSPACE_SLUG=$(echo "$WORKSPACE_DIR" | tr '/_ ' '-')
+MEMORY_SRC="${IWE_MEMORY_SRC:-$HOME/.claude/projects/${WORKSPACE_SLUG}/memory}"
 EXOCORTEX_DST="$DS_STRATEGY/exocortex"
 # MCP reindex — опциональный компонент (WP-187 iwe-knowledge Gateway заменяет локальный knowledge-mcp).
 # Переопределить путь можно через env IWE_SELECTIVE_REINDEX.
@@ -72,9 +75,11 @@ do_backup() {
 
   # Mirror *.md/*.yaml/*.yml from auto-memory; --delete prunes files removed upstream.
   # CLAUDE.md is excluded so the workspace copy below isn't deleted by --delete.
+  # -L (copy-links) dereferences symlinks so target content is copied, not the link —
+  # prevents a self-referencing ELOOP symlink from recurring here (WP-7 DOC8).
   # day-rhythm-config.yaml is excluded here and handled separately via merge (see below)
   # to preserve user-configured keys (e.g. calendar_ids) from being overwritten by template defaults.
-  rsync -a --delete \
+  rsync -aL --delete \
     --exclude='CLAUDE.md' \
     --exclude='day-rhythm-config.yaml' \
     --include='*.md' --include='*.yaml' --include='*.yml' \
@@ -113,17 +118,35 @@ PYEOF
     fi
   fi
 
+  # issue #217: обратная подстановка $HOME -> {{HOME_DIR}} делает бэкап ОС-агностичным
+  # (симметрично прямой подстановке в setup.sh и restore-from-exocortex.sh).
   if [ -f "$WORKSPACE_DIR/CLAUDE.md" ]; then
-    cp "$WORKSPACE_DIR/CLAUDE.md" "$EXOCORTEX_DST/CLAUDE.md"
+    sed "s|$HOME|{{HOME_DIR}}|g" "$WORKSPACE_DIR/CLAUDE.md" > "$EXOCORTEX_DST/CLAUDE.md"
   fi
 
   if [ -f "$WORKSPACE_DIR/AGENTS.md" ]; then
-    cp "$WORKSPACE_DIR/AGENTS.md" "$EXOCORTEX_DST/AGENTS.md"
+    sed "s|$HOME|{{HOME_DIR}}|g" "$WORKSPACE_DIR/AGENTS.md" > "$EXOCORTEX_DST/AGENTS.md"
   fi
 
   local count
   count=$(find "$EXOCORTEX_DST" -maxdepth 1 -type f \( -name '*.md' -o -name '*.yaml' -o -name '*.yml' \) | wc -l | tr -d ' ')
   log "  Синхронизировано: $count файлов → $EXOCORTEX_DST/"
+}
+
+# iwe_repo_dirs — печатает поддиректории с .git, дедуплицированные по реальному
+# физическому пути (repo-symlink алиас иначе считается отдельным репозиторием
+# наравне с оригиналом — двойной reindex одного источника, найдено 2026-07-17).
+iwe_repo_dirs() {
+  local repo real seen=""
+  for repo in "$@"; do
+    [ -d "$repo/.git" ] || continue
+    real=$(cd -P "$repo" 2>/dev/null && pwd) || continue
+    case " $seen " in
+      *" $real "*) continue ;;
+    esac
+    seen="$seen $real"
+    echo "$repo"
+  done
 }
 
 # --- Шаг 2: Knowledge-MCP reindex ---
@@ -155,8 +178,7 @@ PYEOF
 
   # Определяем, какие Pack/DS были изменены сегодня
   local l2_sources="" l4_sources=""
-  for repo in "$WORKSPACE_DIR"/PACK-* "$WORKSPACE_DIR"/DS-*; do
-    [ -d "$repo/.git" ] || continue
+  while IFS= read -r repo; do
     local repo_name
     repo_name=$(basename "$repo")
     local today_commits
@@ -177,7 +199,7 @@ PYEOF
         log "  ⚠ $repo_name: не в sources — пропуск"
       fi
     fi
-  done
+  done < <(iwe_repo_dirs "$WORKSPACE_DIR"/PACK-* "$WORKSPACE_DIR"/DS-*)
 
   if [ -z "$l2_sources" ] && [ -z "$l4_sources" ]; then
     log "  Нет изменений в индексируемых источниках — пропуск reindex"

@@ -83,10 +83,93 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-07-08
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## [Unreleased] — обновлено 2026-07-20
 
 ### Added
 
+- feat(wp483): sync guide-kit v0.1.2 into template (снимок Ф9 система №16 + слияние приоритета Портного + degree-контекст)
+- `4484b4c` feat(skill-promote): защита L3-констант через inline-маркер (WP-5)
+- `5aabac2` feat(wp483): sync guide-kit v0.1.1 into template
+
+### Changed
+
+- `c40b041` docs(changelog): thank SDaiBots (#217/#221/#224/#228), AONarchuk (#215), trover97 (#218) — пропущены в прошлых раундах благодарностей
+- `b08403d` chore: release 0.36.0
+- `fb9afa6` docs(changelog): regenerate [Unreleased] after guide-kit v0.1.1 sync
+
+### Fixed
+
+- `3f91860` fix(release): sync README version badge to 0.36.0
+- `b0f675b` fix(scripts): env-fallback для GOVERNANCE_REPO в generate-hot-files-list.sh
+- `1b29b19` fix(strategist): убрать хардкод DS-strategy в DAY_OPEN_PIPELINE (регрессия 238a5c1)
+- `5cd5695` fix(roles): runtime-резолв путей в extractor/synchronizer вместо build-time плейсхолдеров
+
+
+## [0.36.0] — 2026-07-19
+
+### Added
+
+- `5aabac2` feat(wp483): sync guide-kit v0.1.1 into template
+- `ae900f3` feat(wp485): доставить 4 скрипта Kimi Standalone из root в шаблон
+- `262c313` feat(l1-skills): добавить USER-SPACE маркеры в agent-fault и audit-installation
+- `017235c` feat(wp483-f4): deliver guide-kit v0.1.0 to the template (demo catalog + work_section)
+- `fee0f85` feat(template-sync): промоция слим-ядра CLAUDE.md + hot-каркаса из авторского IWE
+- `8c9c305` feat(wp415): provenance-free iwesys publication
+- `63c2ec5` feat(wp415): Cyrillic gate — publish-to-iwesys rejects any Cyrillic
+- `58b8602` feat(residency-gate): mandatory schema_version + pilot-approved pre-grant.yaml (WP-476 F1 cond. 2/6, pilot decisions 2026-07-16)
+- `078f66c` feat(wp483-f4): guide-kit → template sync tooling (vendored-by-tag model)
+- `d450902` feat(day-close): token-discipline execution model — digest + subagent phases (#234)
+- `f4ca48e` feat(manifest): update-manifest.local.json — fork-local exclusions survive update.sh (#247)
+- `c65f9d0` feat(WP-450 S-50): promote hot-files.list auto-discovery to FMT
+- `33ebbf9` feat(WP-450): promote verify-context-budget.sh to FMT (S-50)
+- `4bebc58` feat: complete gate-metrics.sh promotion — manifest coverage + changelog
+- `39421f0` feat(strategist): вызвать week-open-day-section-patch после session-prep (WP-484 Ф3)
+- `dd011fa` feat(hindsight): deliver hindsight_trigger.py + hindsight_adapter.py, closing L2 integration gap (#252)
+- `046aec3` feat(wp-450-ф5): промоция hooks-bypass-gate.md + integration-gate.md
+- `a7f5f9d` feat: promote 8 personal utility scripts to platform
+- `50eeef1` feat(wp-450-ф5): промоция 3 rules-lazy файлов (drift-guard, new-files-guard, wp-stop-list)
+- `695033d` feat(residency-gate): ResidencyGate full implementation
+- `c286e98` feat: promote day-open-pipeline.sh to platform
+- `1d66115` feat(docs): принцип резидентности персональных данных (WP-475 Ф4)
+- `e919c04` feat(update.sh): add --fast check mode, version-only comparison (#230)
+- `34bcc57` feat(en-projection): community channels live on iwesys/IWE itself (pilot decision)
+- `7eeee9e` feat(en-projection): EN distribution is self-contained — no RU-source references (pilot decision)
+- `c8fcea1` feat(wp474/f5-f6): dry-run фиксы + assembly через доменные источники
+- `dfb4a48` feat(wp401): визуальный слой README + доставка CHANGELOG + EN-редирект контрибуций (Ф5.4/Ф5.6)
+- `fed2e79` feat(wp401): governance-файлы публичной витрины + доставка в iwesys (Ф5.1-Ф5.2)
+- `3c4d202` feat(wp474/f4): реализовать verify-pack-adequacy-subsection + подключить к /verify и pack-creator
+- `0a1de9a` feat(pack-creator,pack-new): seed/mature maturity marker + move .spf-state.yaml out of Pack tree
+- `0fbfbba` feat(pack-new): provisional-имя Pack + PFAD-lite decision record (WP-474 Ф2)
+- `2befada` feat(pack-new): собирать источники домена до имени, не после (SoTA-Sheet-lite)
+- `2381d7f` feat(wp-7): promote 6 day-open scripts + fix scaffold drift + seed new-user scripts
+- `927808b` feat(wp-7): promote 6 day-open scripts + fix scaffold drift + seed new-user scripts
 - `1c71664` feat: promote day-open-pipeline.sh entry point (WP-7 FMT-PROMOTE-DAYOPEN1)
 - `c428393` feat(canon-sync): add iwesys/MimEcoSys publish jobs to translate-sync workflow
 - `a100fa6` feat: promote iwe-bug-report.sh to platform (WP-5 sub-#3)
@@ -98,6 +181,27 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `e9cf822` refactor(scripts): удалить избыточный незащищённый template-sync.sh
+- `917d950` docs: regenerate [Unreleased] CHANGELOG after guide-kit v0.1.0 delivery (017235c)
+- `3b1941a` revert(claude-md): вернуть шаблонный distinctions.md — не мирроить авторский
+- `dd273fd` docs(changelog): thank July issue reporters — maxborovik, art-artemov, 277zdwvw9f-pixel, alexfirstoff, alexmetasky, AVNechaev, VxxxlBxxxxv
+- `d68413b` docs: regenerate [Unreleased] CHANGELOG after #234 promotion
+- `a5697c3` docs: regenerate [Unreleased] CHANGELOG after #247 local-manifest feature
+- `387dd77` docs: regenerate [Unreleased] CHANGELOG after issue sweep (#264/#240/#222/#223/#254/#234)
+- `750eaf6` chore: remove __pycache__ .pyc from tree + gitignore (sync 238a5c1 garbage)
+- `8e69322` docs: regenerate [Unreleased] CHANGELOG after #263 fix
+- `806ba4c` docs(changelog): add cec81a3 (DayPlan follow-up to #248)
+- `82b1cc8` docs(changelog): sync Unreleased section — #248/#251/#252 fixes, thank VxxxlBxxxxv
+- `67571f3` docs(changelog): thank den317 for #247/#249/#250 reports
+- `3c62228` docs(changelog): sync Unreleased section — #247/#249/#250 fixes
+- `9f0f31c` docs(changelog): sync Unreleased section — scripts/ delivery fix (#247)
+- `e1c1924` refine(note-review-d6): уточнить текст правила (не существует вместо пуст, дальние сроки → WeekPlan)
+- `0fafee4` docs(changelog): sync Unreleased section — FMT issues #230-246 batch
+- `831a992` docs(pack-creation): синхронизация с WP-474 Ф1-Ф6 — SoTA на Шаге 1.5, Kind/термины, /verify pack [wp474]
+- `1ef78f4` docs(changelog): sync Unreleased section (governance-файлы, jq-фикс, rename iwe-template->IWE)
+- `65e5534` rename(canon-sync): target repo iwesys/iwe-template -> iwesys/IWE
+- `eba00c7` docs: онбординг-страница про три слоя IWE (L1/L2/L3)
+- `039ccf8` chore(hygiene): untrack .DS_Store, добавить в .gitignore
 - `bdb2c9b` docs(changelog): thank users for #229/#228 reports, sync Unreleased section
 - `5b72787` rename(canon-sync): target repo iwesys/FMT-exocortex-template-en -> iwesys/iwe-template
 - `5bce5e3` revert(canon-sync): drop MimEcoSys mirror job — wrong repo scope
@@ -108,6 +212,83 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `b0f675b` fix(scripts): env-fallback для GOVERNANCE_REPO в generate-hot-files-list.sh (CI-блокер, найден при релизе)
+- `1b29b19` fix(strategist): убрать хардкод DS-strategy в DAY_OPEN_PIPELINE (регрессия 238a5c1, блокировала CI)
+- `5cd5695` fix(roles): runtime-резолв путей в extractor/synchronizer вместо build-time плейсхолдеров (issue #271)
+- `5dcff24` fix(wp485): доставить 4 скрипта, обещанных уже промотированными SKILL.md (Ф4)
+- `0b20534` fix(templ): issue funnel 266 — доставка session-guard.sh + SessionEnd fail-safe
+- `eb612ec` fix(day-open/day-close): дедупликация repo-symlink алиасов в циклах по репозиториям
+- `8d4217b` fix(templ): issue funnel 266 — .gitignore для audit-логов + опечатка в CLAUDE.md
+- `662188d` fix(claude-md): добавить недостающий .claude/rules-lazy/blocking-rules-full.md
+- `188653a` fix(wp415): 3 gaps found by review — CHANGELOG heading drop, broken in-page anchors, incomplete author-attribution regex
+- `d69d6f6` fix(wp485): Ф3 ч.2 — синхронизация 5 скриптов root↔шаблон
+- `af12f9c` fix(residency-gate): mark_pre_granted becomes a warning no-op (verifier finding, WP-476)
+- `b1679da` fix(wp-485): подключить check-wp-transfer-completeness.sh к Week Close шаблона
+- `c5488d4` fix(wp-485): 4 живых бага в скриптах шаблона — восстановление регрессии
+- `1c62621` fix(day-close): language-tolerant postcondition patterns 9a/9b (#234)
+- `5ab284f` fix(executor-catalog): VALID_EXECUTORS += agent, script+judgment (#222)
+- `655d385` fix(setup,update): quote env values (#223) + merge-managed base↔remote detector (#254)
+- `6ffb54a` fix(pre-commit): manifest-coverage — block только staged, whole-repo WARN (#240)
+- `e67ca20` fix(dry-run-gate): restore #237 v2 matcher + whitelist read-only bash helpers (#264)
+- `8a611bf` fix(validate-template): restore staged mode + dynamic TEMPLATE_DIR (sync 238a5c1 regression)
+- `7e5be12` fix: resolve WP-REGISTRY schema drift cluster (#263)
+- `fc763e4` fix(WP-450): promote missing checklists.md pointer + ailev↔IWE glossary
+- `8b61285` fix(changelog): restore 0200a93 entry dropped by the auto-regeneration step
+- `0e933ee` fix(audit-installation): mark github_status as subscription-gated
+- `d55b855` fix(day-close): correct check-index-health.py path
+- `51f30fc` fix(iwe-drift): resolve script: helpers relative to the template, not IWE_ROOT
+- `b0d1fe0` fix(day-open-scaffold): resolve template-owned scripts locally, not via governance repo
+- `40c2d70` fix(strategist): retire redundant day-plan scenario on non-strategy-days (WP-484)
+- `a007d15` fix(create-wp): три отставших фикса из root-версии — папка WP-434, consent-file, WeekPlan replace-limit
+- `3c82107` fix(day-open): CP_PROFILE указывал на несуществующий cp-profile.json
+- `7cbd225` fix: 3 template bugs from bot-flagged issue sweep (#253, #255, #256)
+- `f87061e` fix(memory): исправить дрейф терминологии FPF — P2W (WP-481 Ф11)
+- `3a1b5ec` fix(hindsight): передать HINDSIGHT_API_LLM_API_KEY в контейнер
+- `3703abd` fix(residency-gate): replace hand-rolled YAML parsing with real yaml library
+- `9169115` fix(residency-gate): consistent package-relative imports
+- `658cfde` fix(residency-gate): test assertion referenced stale example name
+- `cec81a3` fix(hooks): DayPlan resolution had the same latest-on-disk bug as #248
+- `2ea3510` fix(manifest): drop stale deprecated_files[] entry for docs/DATA-RESIDENCY.md (#251)
+- `0bb38e5` fix(hooks): WeekPlan validator checks staged artifact, not latest-on-disk (#248)
+- `781e8bb` fix(wp474): D1/D9 addressed-критерии — плейсхолдер-конвенция расширена
+- `ae960a2` fix(close-protocols): move final commit after knowledge-write steps (#249)
+- `914a39b` fix(validate-template): checks 2/3 print same file types they count (#247)
+- `e98f152` fix(gitignore): cover .claude/state/ — create-wp.sh consent-sentinels leave untracked tail (#250)
+- `cd240eb` fix(script-promote.sh): bound smoke-test with 5s alarm, daemon scripts hung it forever
+- `242ec42` fix(manifest): deliver scripts/ by default instead of blanket-excluding it (#247, root #246)
+- `a5c6d0f` fix(day-open-scaffold): bound remaining unprotected network calls (#241 residual)
+- `b0ad33b` fix(update.sh): git-based author_diverged() guard replaces path whitelist (#238)
+- `65e6b76` fix(dry-run-gate): unified sentinel + command-split matcher closes 4 bypass holes (#237)
+- `39b58ac` fix(update.sh): --check не должен писать файлы при TOTAL_CHANGES=0
+- `86cf080` fix(update.sh): author_mode-guard для repair_pass()/Step 6 L1-паттерна — устраняет клоббер 66 файлов
+- `448daac` fix(note-review): страховка от воскрешения уже закрытого DayPlan (D6 РП-7)
+- `f37d93a` fix(exocortex): back up and restore extensions/, matching DATA-POLICY.md promise (#235)
+- `b3b6a37` fix(week): remove phantom auto-publisher claim, fix day_num GNU-date fallback (#245)
+- `a3d0b95` fix(day-open-scaffold): bound gh issue list calls with portable timeout (#241)
+- `e0f5031` fix(strategy-session): wire load-extensions before/after hooks (#236)
+- `cddc7aa` fix(seed): align WP-REGISTRY.md schema with create-wp.sh's 6-column output (#232)
+- `3647e57` fix(memory-active-wp-update): fall back to nested FMT-exocortex-template/ layout (#242)
+- `2b7109c` fix(dt-collect): read scheduler/reports, not scheduler/scheduler-reports (#243)
+- `fa23ff0` fix(hooks): scope destructive-guard force detection to git push segment (#233)
+- `b4a3fa9` fix(perms): restore executable bit on .claude/lib/frontmatter.sh
+- `d234799` fix(manifest): restore executable bit for shell scripts (#239)
+- `0f15820` fix(strategy): avoid false calendar and issue defaults in day plan (#238)
+- `6a7a7b0` fix(hooks): harden dry-run gate git and cleanup handling (#237)
+- `261c5a0` fix(update.sh): не перезаписывать .claude/settings.json при repair/update — только сеять при отсутствии
+- `3b00406` fix(day-close): postcondition 9a — xargs ломал проверку на пробеле в имени DayPlan
+- `189b62a` fix(en-projection): install command on the EN side forks iwesys/IWE, not the RU source
+- `a92471a` fix(en-projection): ONTOLOGY.md is bilingual by design — rewrite link instead of translating
+- `b8f8d22` fix(en-projection): heal 3 broken README links on iwesys/IWE found by live audit
+- `857cdad` fix(ontology): IWE abbreviation — Intellectual Work Environment (align with distinctions.md and README H1)
+- `f3111b2` fix(verify): тип pack в argument-hint — описание скилла не отставало от таблицы типов [wp474]
+- `e5c8b0d` fix(manifest): перегенерация generate-manifest.sh — алфавитный порядок verify-* + orz-cycle.svg в files [wp474]
+- `e4a23f0` fix(wp415): jq null-guard for per-commit added/modified/removed in translate-sync
+- `a0ea7c5` fix(pack-new,pack-creator): устранить дефекты финализации + ретроактивная дыра из Ф2 (WP-474 Ф3)
+- `0132fa2` fix(pack-new): устранить дефекты процедуры финализации имени Pack (WP-474 Ф2)
+- `4dea62e` fix(translate-sync): publish single attributed commits to iwesys, not en-draft's full history
+- `040012c` fix(translate-sync): handle null github.event.commits on workflow_dispatch
+- `1113cd0` fix(day-open): promote WP-5 VDV correction — snapshot refresh ordering + drop dead report step
+- `41c20fe` fix(translate-sync): attribute EN commits to the human source author, not a bot
 - `726fa80` fix(ci): restore scripts/iwe-bug-report.sh dropped from manifest by 7ae267a
 - `7ae267a` fix(#229,#228): protect owner:user memory files from stale-repair, add hot-budget validator
 - `c828396` fix(canon-sync): persist-credentials false on en-draft checkout
@@ -129,6 +310,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `84858e4` fix(release): sync-version-badge.sh --fix broken on macOS BSD sed + README badge drift
 - `0b5e140` fix(extractor): guard против запуска сырого файла шаблона + правка примеров
 - `b4d08a2` fix(v0.35.5): orphan-detection TypeError + DS-strategy validator + root detection (#214 #215)
+- `212fa2f` fix(setup): include rules-lazy in dry-run and section message
 
 
 ## [0.35.5] — 2026-06-30

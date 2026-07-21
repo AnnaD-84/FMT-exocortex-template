@@ -5,6 +5,37 @@
 
 ---
 
+## Шаг 0б: Дайджест + фазовая модель исполнения (issue #234)
+
+**Зачем.** Day Close в хвосте длинной сессии делает ~25-40 tool-вызовов, и каждый повторно отправляет весь разговор дня как input (~100K-токенная сессия × 30 вызовов ≈ 3M input-токенов). Дайджест + context isolation субагентов отвязывают стоимость закрытия от размера сессии: ~1 вызов дайджеста + 2 изолированных субагента.
+
+**Карта замен (секция дайджеста → что заменяет в SKILL.md):**
+
+| Дайджест § | Заменяет в SKILL.md |
+|------------|---------------------|
+| 1 commits today | шаг 1 — цикл `git log` по репо |
+| 2 dirty repos | шаг 10b — `check-dirty-repos.sh` |
+| 3 open-sessions.log | шаг 2d — чтение лога |
+| 4 memory drift hits | шаг 4б — grep |
+| 5 index health | шаг 4в — запуск `check-index-health.py` |
+| 6 lesson/memory stats | шаг 4 — скан |
+| 7 WakaTime | шаг 6 |
+| 8 peer sessions today | шаг 6 prerequisite (`sessions/00-index.md`) |
+| 9 DayPlans в current/ | шаг 3 — lookup |
+| 10 done WP contexts в inbox/ | шаг 3 — lookup |
+| 11 WeekReport presence | шаг 2f — precondition |
+
+**Фазы субагентного исполнения.** Родительская сессия выполняет ТОЛЬКО: дайджест → диспетчеризацию → согласование с пилотом → диспетчеризацию → верификацию. Сама она governance-файлы не перечитывает и правок не делает.
+
+- **Фаза B — исполнитель.** ОДИН general-purpose субагент (sonnet). В промпт: (а) дайджест целиком, (б) сегодняшняя дата, (в) инструкция: «Прочитай `.claude/skills/day-close/SKILL.md`, выполни шаги 1-7 через TodoWrite, применяя карту замен ниже. Шаг 0 пропусти — родитель уже выполнил. Форматирование таблиц — `.claude/rules/formatting.md`. Git: стейджить только конкретные файлы, НЕ коммитить. Верни: черновик итогов (шаг 7), список правленных файлов, блокеры». Приложить карту замен.
+- **Фаза C — согласование (родитель).** Показать черновик пилоту дословно (шаг 8). Корректировки → одобрение.
+- **Фаза D — финализатор.** Второй субагент (sonnet): одобренный черновик + корректировки + список файлов фазы B. Выполняет шаги 9, 10, 10b, затем posconditions одним вызовом: `bash "$IWE_SCRIPTS/day-close-prepare.sh" --verify` (заменяет два inline-grep 9a/9b + повторный dirty-скан; паттерны языко-толерантны). Любой FAIL → дописать недостающее / commit+push → повторить до exit 0. Возвращает вывод `--verify` + SHA коммитов.
+- **Фаза E — верификация (родитель).** Шаг 11: R23-верификатор (haiku) диспетчеризует родитель — субагенты не могут порождать субагентов. Передать чеклист, одобренный черновик, оба списка файлов, вывод `--verify`.
+
+**TodoWrite:** родитель ведёт фазы 0б/B/C/D/E как задачи; каждый субагент ведёт свои SKILL-шаги собственным TodoWrite — блокирующее правило пошаговости соблюдено.
+
+**Fallback:** Agent tool недоступен или субагент упал дважды → исполнять шаги inline в родителе (legacy), всё равно на данных дайджеста.
+
 ## Шаг 1: Сбор данных
 
 ```bash
@@ -57,7 +88,7 @@ grep -nE "→ ждёт|ждёт|dep:|блокер|blocked:|остановлен|
 > Правило: [feedback_memory_index_discipline.md](../../../memory/feedback_memory_index_discipline.md)
 
 ```bash
-python3 {{HOME_DIR}}/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/check-index-health.py
+python3 ${IWE_TEMPLATE:-{{HOME_DIR}}/IWE/FMT-exocortex-template}/.claude/scripts/check-index-health.py
 ```
 
 Для каждого FAIL/WARN в отчёте:
@@ -118,6 +149,22 @@ python3 {{HOME_DIR}}/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/check-index
 - С чего начать утром
 - Незавершённые РП: конкретный next action по каждому
 
+**з) Утренние приоритеты (`current/priorities.yaml`, восстановлено issue #270):**
+- Спросить пилота: «Какие 1-3 утренних приоритета на завтра? Укажи WP-ID в порядке важности (первый = самый важный). Если не хочешь задавать — скажи «пропустить».
+- Если пилот задаёт приоритеты → перезаписать `${IWE_GOVERNANCE_REPO:-DS-strategy}/current/priorities.yaml`:
+  ```yaml
+  # Утренние приоритеты на сегодня — обновлять вечером или утром
+  # Порядок = убывающий приоритет (первый = самый важный)
+  # Пустой список = fallback на вчерашний перенос в Day Open
+  last_updated: "YYYY-MM-DD"
+  today:
+    - WP-NNN
+    - WP-MMM
+  ```
+  где `last_updated` = завтрашняя дата (`date -v+1d +%Y-%m-%d 2>/dev/null || date -d "tomorrow" +%Y-%m-%d`).
+- Если пилот пропускает → оставить файл без изменений (Day Open покажет stale-предупреждение, если он устарел ≥3 дня).
+- Добавить файл в список изменений для коммита на финальном шаге (если перезаписывался).
+
 ---
 
 ## Шаг 9: Запись итогов — postconditions
@@ -129,9 +176,17 @@ python3 {{HOME_DIR}}/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/check-index
 **Postcondition 9a:**
 ```bash
 TODAY=$(date +%Y-%m-%d)
-grep -l "Итоги дня" ~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/archive/day-plans/DayPlan\ ${TODAY}.md 2>/dev/null \
-  | xargs grep -l "${TODAY}" 2>/dev/null \
-  | grep -q . && echo "9a OK" || echo "9a FAIL: итоги не найдены в DayPlan ${TODAY}"
+# NOTE (bug-2026-07-10, найден Day Close 10.07): исходная версия гнала путь через
+# `xargs`, который делит аргументы по пробелам — а DayPlan-имена ВСЕГДА содержат
+# пробел ("DayPlan YYYY-MM-DD.md"), поэтому xargs получал два несуществующих
+# токена и постусловие молча падало в FAIL независимо от реального содержимого
+# файла. Прямая проверка через переменную в кавычках не расщепляет путь.
+F="$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/archive/day-plans/DayPlan ${TODAY}.md"
+if grep -q "Итоги дня" "$F" 2>/dev/null && grep -q "${TODAY}" "$F" 2>/dev/null; then
+  echo "9a OK"
+else
+  echo "9a FAIL: итоги не найдены в DayPlan ${TODAY}"
+fi
 ```
 
 **Postcondition 9b:**

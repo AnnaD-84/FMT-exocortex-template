@@ -13,7 +13,11 @@
 
 set -euo pipefail
 
-REPO_ROOT="${IWE_DS_MY_STRATEGY:-$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" || exit 1
+
+REPO_ROOT="$IWE_DS_MY_STRATEGY"
 SESSIONS_DIR="$REPO_ROOT/inbox/agent/sessions"
 CUTOVER_DATE="${SESSION_CUTOVER_DATE:-2026-05-29}"   # ISO date
 STALE_HOURS="${SESSION_STALE_HOURS:-24}"             # для status: completed

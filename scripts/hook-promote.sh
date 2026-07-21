@@ -86,5 +86,13 @@ echo "✅ Промотирован: FMT/.claude/hooks/$fname"
 CHANGELOG_SCRIPT="$FMT_DIR/scripts/changelog-append.sh"
 if [[ -f "$CHANGELOG_SCRIPT" ]]; then bash "$CHANGELOG_SCRIPT"; fi
 
+MANIFEST_SCRIPT="$FMT_DIR/generate-manifest.sh"
+if [[ -f "$MANIFEST_SCRIPT" ]]; then
+    echo "🔄 Пересборка update-manifest.json..."
+    bash "$MANIFEST_SCRIPT" 2>&1
+else
+    echo "⚠️  generate-manifest.sh не найден — обнови update-manifest.json вручную"
+fi
+
 echo "Следующий шаг:"
-echo "  cd $FMT_DIR && git add .claude/hooks/$fname CHANGELOG.md && git commit -m 'feat: promote $fname to platform'"
+echo "  cd $FMT_DIR && git add .claude/hooks/$fname CHANGELOG.md update-manifest.json && git commit -m 'feat: promote $fname to platform'"

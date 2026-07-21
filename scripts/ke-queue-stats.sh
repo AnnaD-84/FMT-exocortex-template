@@ -38,8 +38,19 @@ if [ ! -d "$KE_DIR" ]; then
   exit 0
 fi
 
-PENDING_FILES=$(grep -rl "status: pending-review" "$KE_DIR" 2>/dev/null)
-COUNT=$(echo "$PENDING_FILES" | grep -c . 2>/dev/null || echo 0)
+# Parse frontmatter only; support both legacy 'pending-review' and current 'pending'.
+# Body mentions like '# status: pending' must not be counted.
+PENDING_FILES=$(
+  for f in "$KE_DIR"/*.md; do
+    [ -f "$f" ] || continue
+    awk '/^---/{if(seen){exit} seen=1; next} seen && /^status:[[:space:]]*pending(-review)?$/{print FILENAME; exit}' "$f"
+  done
+)
+if [ -z "$PENDING_FILES" ]; then
+  COUNT=0
+else
+  COUNT=$(echo "$PENDING_FILES" | grep -c .)
+fi
 
 if [ "$COUNT" -eq 0 ]; then
   case "$MODE" in
@@ -50,10 +61,10 @@ if [ "$COUNT" -eq 0 ]; then
   exit 0
 fi
 
-if [ "$COUNT" -gt 0 ]; then
+if [[ "$(uname -s)" == "Darwin" ]]; then
   OLDEST_TS=$(echo "$PENDING_FILES" | xargs -I{} stat -f "%m" "{}" 2>/dev/null | sort -n | head -1)
 else
-  OLDEST_TS=""
+  OLDEST_TS=$(echo "$PENDING_FILES" | tr '\n' '\0' | xargs -0 stat -c "%Y" 2>/dev/null | sort -n | head -1)
 fi
 NOW_TS=$(date +%s)
 if [ -z "$OLDEST_TS" ]; then

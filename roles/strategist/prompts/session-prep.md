@@ -6,7 +6,7 @@
 - **HUB (личные планы):** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/
 - **Документы стратегии:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/ (ВСЕ файлы: Strategy.md, Dissatisfactions.md, Session Agenda.md)
 - **Inbox:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/ ([fleeting-notes.md](https://github.com/{{GITHUB_USER}}/{{GOVERNANCE_REPO}}/blob/main/inbox/fleeting-notes.md) + свежие файлы за неделю)
-- **Активные РП:** `bash {{WORKSPACE_DIR}}/scripts/active-wp-sweep.sh` (агрегатор по `{{GOVERNANCE_REPO}}/inbox/WP-*.md` + git-активность 7д)
+- **Активные РП:** `bash {{WORKSPACE_DIR}}/scripts/active-wp-sweep.sh` (агрегатор по `{{GOVERNANCE_REPO}}/inbox/WP-*.md` + git-активность 7д — ~15с, не ручной обход)
 - **Стратегические карты:** {{WORKSPACE_DIR}}/*/MAPSTRATEGIC.md (если есть в репо)
 - **MEMORY:** ~/.claude/projects/{{CLAUDE_PROJECT_SLUG}}/memory/MEMORY.md
 
@@ -84,7 +84,11 @@
 > Источник: `bash {{WORKSPACE_DIR}}/scripts/active-wp-sweep.sh`
 >
 > Скрипт обходит все `inbox/WP-*.md`, кросс-проверяет git-активность за 7 дней,
-> выдаёт markdown-таблицу активных РП со статусами и бюджетами.
+> выдаёт markdown-таблицу активных РП со статусами и бюджетами за секунды —
+> не читай `WORKPLAN.md` вручную по каждому репо (эти файлы почти нигде не
+> существуют, а сам `{{GOVERNANCE_REPO}}`/CLAUDE.md называет их отменённым
+> антипаттерном; ручной обход растягивал session-prep на 30+ минут вместо
+> секунд, WP-484 20.07).
 
 - Запусти `active-wp-sweep.sh` и используй результат как вход для формирования плана
 - Расхождения с HUB-планом отметь для обсуждения на сессии
@@ -225,8 +229,7 @@ agent: Стратег
 
 **Результат:** черновик WeekPlan (`status: draft`) с повесткой сессии в `current/`.
 
-> Следующий шаг: сессия стратегирования с пользователем → `prompts/strategy-session-weekly.md`.
-> Если первая сессия месяца → `prompts/strategy-session-monthly.md`.
+> Следующий шаг: сессия стратегирования с пользователем → `prompts/strategy-session.md`.
 
 ---
 
@@ -238,6 +241,5 @@ agent: Стратег
 2. **inbox/WP-NNN.md** — для каждого РП, упомянутого в WeekPlan:
    - Обновить `status:` (done/in_progress/pending)
    - Добавить новые РП (если появились в ходе сессии)
-   - Убрать done/archived
 3. **MEMORY.md** — синхронизировать таблицу «РП текущей недели»
 4. Закоммитить все изменения
