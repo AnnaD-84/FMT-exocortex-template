@@ -31,8 +31,12 @@ AUTO_YES=false
 FAST_CHECK=false
 
 # Allow extra curl flags via env var (e.g. CURL_OPTS="--insecure" for Windows corporate firewall).
+# --max-time 20: without it a stalled/slow connection hangs update.sh forever with no
+# output (found 2026-07-22, WP-5 Ubuntu-audit — an interactive run produced zero output
+# and had to be killed). CURL_OPTS overrides the whole string, so a caller who needs a
+# different timeout can still set it explicitly.
 # shellcheck disable=SC2086  # $CURL_BASE_OPTS intentionally unquoted (multi-token flag)
-CURL_BASE_OPTS="${CURL_OPTS:-}"
+CURL_BASE_OPTS="${CURL_OPTS:---max-time 20}"
 
 # Windows (msys/cygwin) schannel backend may fail with CRYPT_E_NO_REVOCATION_CHECK.
 # Detect the best available SSL revocation flag without making a network call.
@@ -284,7 +288,12 @@ repair_pass() {
                 fname=$(basename "$fpath")
                 [ "$fname" = "MEMORY.md" ] && continue
                 if [ -d "$CLAUDE_MEMORY_DIR" ]; then
-                    mem_dst="$CLAUDE_MEMORY_DIR/$fname"
+                    # Относительный путь от memory/ сохраняет вложенность (issue #287/#294) —
+                    # basename ронял memory/reference/agent-core.md на плоский memory/agent-core.md,
+                    # и 9 ссылок на него в CLAUDE.md указывали в никуда.
+                    rel="${fpath#memory/}"
+                    mem_dst="$CLAUDE_MEMORY_DIR/$rel"
+                    mkdir -p "$(dirname "$mem_dst")"
                     if [ ! -f "$mem_dst" ]; then
                         cp "$SCRIPT_DIR/$fpath" "$mem_dst"
                         echo "  ⟲ $fpath → memory/ (repair)"
@@ -749,9 +758,10 @@ for i in "${!DEPRECATED_FOUND[@]}"; do
             [ -f "$ws_path" ] && rm "$ws_path" && echo "    (также из workspace)"
             ;;
         esac
-        # Also remove from Claude memory dir (memory/* files)
+        # Also remove from Claude memory dir (memory/* files) — relative path from
+        # memory/ (not basename), symmetric with repair_pass() delivery (issue #287).
         case "$f" in memory/*.md|memory/*.yaml|memory/*.yml)
-            mem_path="$CLAUDE_MEMORY_DIR/$(basename "$f")"
+            mem_path="$CLAUDE_MEMORY_DIR/${f#memory/}"
             [ -f "$mem_path" ] && rm "$mem_path" && echo "    (также из memory/)"
             ;;
         esac
@@ -1001,7 +1011,10 @@ if [ -d "$CLAUDE_MEMORY_DIR" ]; then
         case "$f" in
             memory/*.md|memory/*.yaml|memory/*.yml)
                 fname=$(basename "$f")
-                dst="$CLAUDE_MEMORY_DIR/$fname"
+                # Относительный путь от memory/, не basename — сохраняет вложенность
+                # (memory/reference/agent-core.md), симметрично repair_pass() (issue #287).
+                dst="$CLAUDE_MEMORY_DIR/${f#memory/}"
+                mkdir -p "$(dirname "$dst")"
                 if [ "$fname" != "MEMORY.md" ]; then
                     # issue #229: same owner:user guard as repair_pass() — this loop runs on
                     # every update.sh call (not just repair), so it's the more common path
@@ -1288,6 +1301,20 @@ if $ROLES_CHANGED && command -v launchctl >/dev/null 2>&1; then
                 echo "  ○ $(basename "$role_dir"): переустановите вручную"
         fi
     done
+fi
+
+# === Step 6d2: Regenerate hot-files.list (issue #294/#291) ===
+# hot-files.list ships pre-baked with the author's GOVERNANCE_REPO name; regenerate
+# so verify-context-budget.sh resolves the governance CLAUDE.md on THIS install
+# (script reads GOVERNANCE_REPO from $WORKSPACE_DIR/.exocortex.env itself).
+if [ -f "$SCRIPT_DIR/scripts/generate-hot-files-list.sh" ]; then
+    if $CHECK_ONLY; then
+        echo "  [CHECK] Would regenerate hot-files.list (bash $SCRIPT_DIR/scripts/generate-hot-files-list.sh)"
+    else
+        HOTFILES_OUTPUT=$(IWE_ROOT="$WORKSPACE_DIR" bash "$SCRIPT_DIR/scripts/generate-hot-files-list.sh" 2>&1) && \
+            echo "$HOTFILES_OUTPUT" | sed 's/^/  /' || \
+            { echo "$HOTFILES_OUTPUT" | sed 's/^/  /'; echo "  ⚠ hot-files.list не пересобран — запусти вручную: bash $SCRIPT_DIR/scripts/generate-hot-files-list.sh"; }
+    fi
 fi
 
 # === Step 6e: Replace local manifest with downloaded remote manifest ===

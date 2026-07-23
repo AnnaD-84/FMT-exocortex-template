@@ -69,7 +69,7 @@
 
 ## Контекстный бюджет IWE (WP-445)
 
-Hot-каркас ≤20K токенов (M1), строгая цель ≤12K (M2). Изменил файл из `hot-files.list` (оба CLAUDE.md, rules/*.md) → перед коммитом `DS-strategy/scripts/verify-context-budget.sh`.
+Hot-каркас ≤20K токенов (M1), строгая цель ≤12K (M2). Изменил файл из `hot-files.list` (оба CLAUDE.md, rules/*.md) → перед коммитом `/home/iwe-user-03/IWE/FMT-exocortex-template/scripts/verify-context-budget.sh`.
 
 ## 7. Обновление этого файла
 
