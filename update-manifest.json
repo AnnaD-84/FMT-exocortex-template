@@ -429,6 +429,9 @@
       "path": ".claude/templates/drr-template.md"
     },
     {
+      "path": ".githooks/commit-msg"
+    },
+    {
       "path": ".githooks/pre-commit"
     },
     {
@@ -456,7 +459,13 @@
       "path": "REPO-TYPE.md"
     },
     {
+      "path": "aisystant-sync-targets.yaml"
+    },
+    {
       "path": "docs/AGENT-FAULT-PROCESS.md"
+    },
+    {
+      "path": "docs/BROWSER-CI-TEMPLATE.md"
     },
     {
       "path": "docs/DATA-POLICY.md"
@@ -519,6 +528,9 @@
       "path": "docs/inter-agent-handoff.md"
     },
     {
+      "path": "docs/maintaining-skills.md"
+    },
+    {
       "path": "docs/migrations/strategy-v0.27.0.md"
     },
     {
@@ -544,6 +556,9 @@
     },
     {
       "path": "docs/principles-vs-skills.md"
+    },
+    {
+      "path": "docs/release-audit-log.md"
     },
     {
       "path": "docs/roles-catalog.md"
@@ -1245,6 +1260,9 @@
       "path": "scripts/changelog-flush.sh"
     },
     {
+      "path": "scripts/check-claude-md-links.py"
+    },
+    {
       "path": "scripts/check-dirty-repos.sh"
     },
     {
@@ -1254,7 +1272,13 @@
       "path": "scripts/check-open-sessions.sh"
     },
     {
+      "path": "scripts/check-platform-compat.sh"
+    },
+    {
       "path": "scripts/check-script-collisions.sh"
+    },
+    {
+      "path": "scripts/check-seed-drift.sh"
     },
     {
       "path": "scripts/check-setup-update-parity.sh"
@@ -1272,10 +1296,16 @@
       "path": "scripts/close-wp.sh"
     },
     {
+      "path": "scripts/codex-peer-adapter.sh"
+    },
+    {
       "path": "scripts/content-filter-apply.py"
     },
     {
       "path": "scripts/content-filter-map.txt"
+    },
+    {
+      "path": "scripts/copy-to-aisystant.py"
     },
     {
       "path": "scripts/coverage-skills.sh"
@@ -1339,6 +1369,9 @@
     },
     {
       "path": "scripts/generate-skills-catalog.sh"
+    },
+    {
+      "path": "scripts/git-dirty-guard.sh"
     },
     {
       "path": "scripts/headless-runner.sh"
@@ -1419,6 +1452,9 @@
       "path": "scripts/lesson-close.sh"
     },
     {
+      "path": "scripts/lib/common.sh"
+    },
+    {
       "path": "scripts/llm-proxy-launcher.sh"
     },
     {
@@ -1471,9 +1507,6 @@
     },
     {
       "path": "scripts/route-task.sh"
-    },
-    {
-      "path": "scripts/safe-pull.sh"
     },
     {
       "path": "scripts/script-promote.sh"
@@ -1551,25 +1584,10 @@
       "path": "scripts/week-draft-init.sh"
     },
     {
+      "path": "scripts/wp-list.py"
+    },
+    {
       "path": "sessions/00-index.md"
-    },
-    {
-      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/00-writer.md"
-    },
-    {
-      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/01-peer.md"
-    },
-    {
-      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/02-writer.md"
-    },
-    {
-      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/03-peer.md"
-    },
-    {
-      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/meta.yaml"
-    },
-    {
-      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/report.md"
     },
     {
       "path": "setup.sh"
@@ -1595,13 +1613,12 @@
   ],
   "excluded_paths": [
     "AGENTS-agent-blocks.md",
-    "docs/BROWSER-CI-TEMPLATE.md",
     "docs/developer/README.md",
     "docs/developer/card-template.md",
+    "docs/developer/code-style.md",
     "docs/developer/developer-guide.md",
     "docs/developer/testing-as-spec.md",
-    "docs/maintaining-skills.md",
-    "docs/release-audit-log.md",
+    "docs/developer/working-with-claude.md",
     "promotion-status.yaml",
     "scripts/agent-dashboard.py",
     "scripts/audit-ad-hoc-roles.py",
@@ -1616,6 +1633,7 @@
     "scripts/session-dispatcher-tsekh.py",
     "scripts/tests/conftest.py",
     "scripts/tests/test_agent_dashboard.py",
+    "scripts/tests/test_copy_to_aisystant.py",
     "scripts/tests/test_day_close_prepare.py",
     "scripts/tests/test_delivery_content.py",
     "scripts/tests/test_delivery_formal.py",
@@ -1625,9 +1643,19 @@
     "scripts/tests/test_translate_delta.py",
     "scripts/tests/test_translate_parse.py",
     "scripts/translate.py",
-    "scripts/verify-template-integrity.sh"
+    "scripts/verify-template-integrity.sh",
+    "sessions/2026-06/2026-06-17-01-kimi-setup/00-writer.md",
+    "sessions/2026-06/2026-06-17-01-kimi-setup/01-peer.md",
+    "sessions/2026-06/2026-06-17-01-kimi-setup/02-writer.md",
+    "sessions/2026-06/2026-06-17-01-kimi-setup/03-peer.md",
+    "sessions/2026-06/2026-06-17-01-kimi-setup/meta.yaml",
+    "sessions/2026-06/2026-06-17-01-kimi-setup/report.md"
   ],
   "deprecated_files": [
+    {
+      "path": "scripts/safe-pull.sh",
+      "reason": "zero callers (WP-5 audit), logic folded into scripts/lib/common.sh iwe_safe_pull(), removed in v0.36.2"
+    },
     {
       "path": "LEARNING-PATH.md",
       "reason": "moved to docs/LEARNING-PATH.md"
@@ -1695,6 +1723,46 @@
     {
       "path": ".claude/skills/peer-conversation/modes.md",
       "reason": "removed from platform — moved to peer-conversation skill internals"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/00-writer.md",
+      "reason": "session transcripts archived, removed by WP-401 Ф6.1 2026-07-22"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/01-peer.md",
+      "reason": "session transcripts archived, removed by WP-401 Ф6.1 2026-07-22"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/02-writer.md",
+      "reason": "session transcripts archived, removed by WP-401 Ф6.1 2026-07-22"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/03-peer.md",
+      "reason": "session transcripts archived, removed by WP-401 Ф6.1 2026-07-22"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/meta.yaml",
+      "reason": "session transcripts archived, removed by WP-401 Ф6.1 2026-07-22"
+    },
+    {
+      "path": "sessions/2026-06/2026-06-17-01-kimi-setup/report.md",
+      "reason": "session transcripts archived, removed by WP-401 Ф6.1 2026-07-22"
+    },
+    {
+      "path": "docs/developer/README.md",
+      "reason": "documentation pipeline deprecated, consolidated in memory/, removed by WP-401 Ф6.1 2026-07-23"
+    },
+    {
+      "path": "docs/developer/card-template.md",
+      "reason": "documentation pipeline deprecated, consolidated in memory/, removed by WP-401 Ф6.1 2026-07-23"
+    },
+    {
+      "path": "docs/developer/developer-guide.md",
+      "reason": "documentation pipeline deprecated, consolidated in memory/, removed by WP-401 Ф6.1 2026-07-23"
+    },
+    {
+      "path": "docs/developer/testing-as-spec.md",
+      "reason": "documentation pipeline deprecated, consolidated in memory/, removed by WP-401 Ф6.1 2026-07-23"
     }
   ]
 }

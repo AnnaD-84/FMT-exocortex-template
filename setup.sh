@@ -772,8 +772,21 @@ elif $DRY_RUN; then
     fi
 else
     if [ -d "$STRATEGY_TEMPLATE" ]; then
+        # bug (issue #305): $MY_STRATEGY_DIR can exist as a plain non-git dir on a
+        # rerun after a prior failed setup.sh left it via the "seed/strategy not
+        # found" fallback below (mkdir -p .../{current,inbox,...}). `cp -r src dst`
+        # then nests src INSIDE an existing dst instead of merging — reproduces the
+        # reported "DS-strategy/strategy/..." double-nesting. Fail loud instead of
+        # silently producing a broken layout; `cp -r src/. dst/` copies contents
+        # correctly whether dst pre-exists (empty, after this guard) or not.
+        if [ -d "$MY_STRATEGY_DIR" ] && [ -n "$(ls -A "$MY_STRATEGY_DIR" 2>/dev/null)" ]; then
+            echo "  ERROR: $MY_STRATEGY_DIR already exists and is not a git repo (partial/failed prior run?)."
+            echo "  Fix: inspect and clean it up (or rename it aside), then re-run setup.sh."
+            exit 1
+        fi
         # Copy my-strategy template into its own repo
-        cp -r "$STRATEGY_TEMPLATE" "$MY_STRATEGY_DIR"
+        mkdir -p "$MY_STRATEGY_DIR"
+        cp -r "$STRATEGY_TEMPLATE"/. "$MY_STRATEGY_DIR"/
         cd "$MY_STRATEGY_DIR"
         git init
         git add -A

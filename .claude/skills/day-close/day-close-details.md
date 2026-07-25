@@ -36,6 +36,38 @@
 
 **Fallback:** Agent tool недоступен или субагент упал дважды → исполнять шаги inline в родителе (legacy), всё равно на данных дайджеста.
 
+## Шаг 0в: Strategy_day guard (issue #286)
+
+**Проблема, которую закрывает этот шаг.** `/day-open` в стратегический день (по умолчанию понедельник, `day_open.strategy_day` в `day-rhythm-config.yaml`) не создаёт DayPlan — план целиком в WeekPlan (`day-open/SKILL.md` шаг 4). До этого шага `/day-close` про исключение не знал: шаги 1, 2b, 3, 9a безусловно требовали DayPlan, а постусловие 9a («Итоги дня» найдено grep'ом) было структурно недостижимо — файла, куда писать, нет. Протокол не мог завершиться `completed`.
+
+**Проверка (в начале алгоритма, до шага 1).** `date +%A` — локале-зависимо (под `ru_RU.UTF-8` вернёт «четверг», не «thursday», и сравнение с англоязычным именем из конфига никогда не совпадёт — тот же баг однажды уже был найден и исправлен в `day-open-scaffold.sh`, здесь используется тот же паттерн: числовой день недели `date +%u` (1=Пн…7=Вс, локале-независимо) + карта имя→число):
+```bash
+STRATEGY_DAY_NAME=$(python3 -c "
+import yaml
+d = yaml.safe_load(open('${IWE_GOVERNANCE_REPO:-DS-strategy}/exocortex/day-rhythm-config.yaml'))
+print((d.get('day_open') or {}).get('strategy_day', 'monday'))
+" 2>/dev/null || echo monday)
+case "$STRATEGY_DAY_NAME" in
+  monday)    STRATEGY_DOW=1 ;;
+  tuesday)   STRATEGY_DOW=2 ;;
+  wednesday) STRATEGY_DOW=3 ;;
+  thursday)  STRATEGY_DOW=4 ;;
+  friday)    STRATEGY_DOW=5 ;;
+  saturday)  STRATEGY_DOW=6 ;;
+  sunday)    STRATEGY_DOW=7 ;;
+  *)         STRATEGY_DOW=0 ;;
+esac
+TODAY_DOW=$(date +%u)
+if [ "$TODAY_DOW" = "$STRATEGY_DOW" ]; then
+  echo "strategy_day: true"
+fi
+```
+
+**Если strategy_day:**
+- Шаги 1, 2b, 3 (архивация DayPlan сегодня — старые DayPlan'ы в `current/` архивировать всё равно), 9a — помечать **неприменимо**, не FAIL (постусловие 9a не проверяется вообще, не входит в решение «Все ✅»).
+- Итоги дня — только в WeekReport (шаг 9b), как обычный день: только факты (РП-результаты, коммиты, мультипликатор). Плановые строки в WeekReport НЕ копировать.
+- Чеклист Day Close: соответствующие пункты (статусы строк DayPlan, архивация DayPlan, «Итоги дня записаны в DayPlan», Handoff-валидация из DayPlan) — N/A на сегодня, не блокируют «Все ✅».
+
 ## Шаг 1: Сбор данных
 
 ```bash
