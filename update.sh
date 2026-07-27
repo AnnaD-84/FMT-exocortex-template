@@ -675,8 +675,11 @@ for f in "${NEW_FILES[@]}"; do
     mkdir -p "$SCRIPT_DIR/$(dirname "$f")"
     cp "$TMPDIR_UPDATE/files/$f" "$SCRIPT_DIR/$f"
     APPLIED_PATHS+=("$f")
-    # Make scripts executable
-    case "$f" in *.sh) chmod +x "$SCRIPT_DIR/$f" ;; esac
+    # Make scripts executable — files arrive via raw `curl -o` (no file-mode
+    # metadata survives), so the +x bit must be reapplied explicitly here.
+    # issue #308: .githooks/* is not cosmetic (git silently skips a non-executable
+    # hook); wp-list.py/check-claude-md-links.py are git-tracked 755 upstream.
+    case "$f" in *.sh|.githooks/*|scripts/wp-list.py|scripts/check-claude-md-links.py) chmod +x "$SCRIPT_DIR/$f" ;; esac
     echo "  + $f"
     APPLIED=$((APPLIED + 1))
 done
@@ -761,7 +764,8 @@ for f in "${UPDATED_FILES[@]}"; do
         fi
     else
         cp "$TMPDIR_UPDATE/files/$f" "$SCRIPT_DIR/$f"
-        case "$f" in *.sh) chmod +x "$SCRIPT_DIR/$f" ;; esac
+        # issue #308: same +x reapply as the NEW_FILES loop above (curl fetch drops file mode).
+        case "$f" in *.sh|.githooks/*|scripts/wp-list.py|scripts/check-claude-md-links.py) chmod +x "$SCRIPT_DIR/$f" ;; esac
         echo "  ~ $f"
     fi
     APPLIED=$((APPLIED + 1))

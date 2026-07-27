@@ -104,6 +104,11 @@ for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
             case "$(basename "$f")" in
                 validate-template.sh|LEARNING-PATH.md|CHANGELOG.md) continue ;;
             esac
+            # issue #308: docs/adr/* — historical ADR docs describing the past
+            # authorial install, same exemption class as LEARNING-PATH.md/CHANGELOG.md above.
+            case "$f" in
+                docs/adr/*) continue ;;
+            esac
             file_hits=$(cd "$TEMPLATE_DIR" && git show ":$f" 2>/dev/null \
                 | grep -n "$pattern" | grep -v 'github.com/' | grep -v 'docs/adr/' || true)
             if [ -n "$file_hits" ]; then

@@ -2,12 +2,19 @@
 # routing: helper  called-by=wp-gate  deterministic=true
 # see DP.SC.159, DP.ROLE.059
 # create-wp.sh — атомарное создание РП в 4 местах (inbox, REGISTRY, WeekPlan, Linear)
-# see WP-297 Ф6.2 (${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/WP-297-wp-lifecycle-architecture.md)
+# see WP-297 Ф6.2 (DS-my-strategy/inbox/WP-297-wp-lifecycle-architecture.md)
 # see DP.M.010, DP.ROLE.037
 #
 # Использование:
 #   bash create-wp.sh --title "Название" --budget 5h --priority P3 [--slug slug] [--repo "репо"] [--related "WP-150:dependency,WP-167:продукт"]
+#   bash create-wp.sh --title "Название" --budget 5h --priority P3 --state "belonging (Оснащённость): из → в" [--hypothesis H-101]
 #   bash create-wp.sh --title "Название" --budget 5h --priority P3 --no-consent-check
+#
+# --state (WP-505): target state transition (WP-457 State-Transition Gate).
+#   REQUIRED when <governance>/docs/state-axes-registry.yaml exists (author install);
+#   optional otherwise (typical user install — gate inactive per template contract).
+#   Must mention at least one gate_ready axis code from the registry file.
+# --hypothesis (WP-505): H-NNN from current/hypotheses-log.md, or "—" (default).
 #
 # Предусловие: consent state file должен существовать:
 #   touch ${IWE:-$HOME/IWE}/.claude/state/wp-consent-{N}
@@ -17,7 +24,23 @@
 set -uo pipefail
 
 IWE="${IWE_ROOT:-$HOME/IWE}"
-GOV_REPO="${IWE_GOVERNANCE_REPO:-DS-strategy}"
+
+# --- Определить governance-репо ---
+# Приоритет: (1) явная переменная IWE_GOVERNANCE_REPO → (2) DS-my-strategy → (3) DS-strategy
+GOV_REPO="${IWE_GOVERNANCE_REPO:-}"
+if [[ -z "$GOV_REPO" ]]; then
+  for candidate in DS-my-strategy DS-strategy; do
+    if [[ -d "$IWE/$candidate" ]]; then
+      GOV_REPO="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$GOV_REPO" ]]; then
+  echo "ERROR: IWE_GOVERNANCE_REPO not set and neither DS-my-strategy nor DS-strategy found in $IWE" >&2
+  exit 1
+fi
+
 STRATEGY="$IWE/$GOV_REPO"
 REGISTRY="$STRATEGY/docs/WP-REGISTRY.md"
 INBOX="$STRATEGY/inbox"
@@ -31,6 +54,8 @@ SLUG=""
 REPO=""
 RELATED=""
 RESULT=""
+STATE=""
+HYPOTHESIS=""
 SKIP_CONSENT=0
 
 while [[ $# -gt 0 ]]; do
@@ -42,6 +67,8 @@ while [[ $# -gt 0 ]]; do
     --repo)     REPO="$2";     shift 2 ;;
     --related)  RELATED="$2";  shift 2 ;;
     --result)   RESULT="$2";   shift 2 ;;
+    --state)    STATE="$2";    shift 2 ;;
+    --hypothesis) HYPOTHESIS="$2"; shift 2 ;;
     --no-consent-check) SKIP_CONSENT=1; shift ;;
     *) echo "Неизвестный флаг: $1" >&2; exit 1 ;;
   esac
@@ -49,8 +76,72 @@ done
 
 # --- Валидация ---
 if [[ -z "$TITLE" || -z "$BUDGET" ]]; then
-  echo "Использование: $0 --title \"Название\" --budget 5h [--priority P3] [--slug slug] [--repo репо] [--related \"WP-NNN:тип\"] [--result R3]" >&2
+  echo "Использование: $0 --title \"Название\" --budget 5h [--priority P3] [--slug slug] [--repo репо] [--related \"WP-NNN:тип\"] [--result R3] [--state \"ось: из → в\"] [--hypothesis H-NNN]" >&2
   exit 1
+fi
+
+# --- State-Transition Gate (WP-457 / WP-505) ---
+# When the axes registry exists, --state is mandatory and must reference a
+# gate_ready axis; without the registry (typical user install) the gate is off.
+AXES_FILE="$STRATEGY/docs/state-axes-registry.yaml"
+GATE_READY_AXES=""
+if [[ -f "$AXES_FILE" ]]; then
+  GATE_READY_AXES=$(python3 - "$AXES_FILE" <<'PYEOF'
+import sys, re
+codes, code = [], None
+for line in open(sys.argv[1], encoding="utf-8"):
+    m = re.match(r"\s*-\s*code:\s*(\S+)", line)
+    if m:
+        code = m.group(1)
+    elif re.match(r"\s*gate_ready:\s*true\b", line) and code:
+        codes.append(code)
+        code = None
+print(" ".join(codes))
+PYEOF
+)
+  if [[ -z "$STATE" ]]; then
+    echo "🚫 State-Transition Gate (WP-457): --state обязателен — реестр осей найден:" >&2
+    echo "   $AXES_FILE" >&2
+    echo "   Формат: --state \"<ось> (<русское имя>): <из> → <в>\"" >&2
+    echo "   Допустимые оси (gate_ready): $GATE_READY_AXES" >&2
+    exit 1
+  fi
+  STATE_AXES=""
+  for ax in $GATE_READY_AXES; do
+    if [[ "$STATE" == *"$ax"* ]]; then
+      STATE_AXES="$STATE_AXES $ax"
+    fi
+  done
+  if [[ -z "$STATE_AXES" ]]; then
+    echo "🚫 State-Transition Gate: в --state не найден ни один gate_ready код оси" >&2
+    echo "   Допустимые: $GATE_READY_AXES" >&2
+    echo "   Передано: $STATE" >&2
+    exit 1
+  fi
+fi
+
+# Registry cell «Ставка»: Russian axis names + hypothesis id (WP-505).
+axis_ru() {
+  case "$1" in
+    permission) echo "Доверие" ;;
+    belonging)  echo "Оснащённость" ;;
+    engagement) echo "Увлечённость" ;;
+    mastery)    echo "Компетентность" ;;
+    community)  echo "Включённость" ;;
+    mentorship) echo "Забота" ;;
+    *)          echo "$1" ;;
+  esac
+}
+STAKE_CELL="—"
+if [[ -n "$STATE" && -n "${STATE_AXES:-}" ]]; then
+  STAKE_CELL=""
+  for ax in $STATE_AXES; do
+    [[ -n "$STAKE_CELL" ]] && STAKE_CELL="${STAKE_CELL}+"
+    STAKE_CELL="${STAKE_CELL}$(axis_ru "$ax")"
+  done
+  if [[ -n "$HYPOTHESIS" && "$HYPOTHESIS" != "—" ]]; then
+    STAKE_CELL="${STAKE_CELL} · ${HYPOTHESIS}"
+  fi
 fi
 
 # --- Найти следующий номер WP ---
@@ -117,7 +208,7 @@ print(result)
 fi
 
 # Inbox convention (WP-434): every WP is a folder inbox/WP-N/ with main file WP-N.md.
-# Slug is dropped from the filename (lives in title: frontmatter).
+# Slug is dropped from the filename (lives in title: frontmatter); archive stub keeps it.
 WP_DIR="$INBOX/WP-${WP_NUM}"
 WP_FILE="$WP_DIR/WP-${WP_NUM}.md"
 mkdir -p "$WP_DIR"
@@ -143,7 +234,16 @@ fi
 
 # --- Шаг 1: context file ---
 echo ""
-echo "1/5 context file..."
+echo "1/6 context file..."
+
+# state_transition goes into frontmatter only when provided (gate off on
+# installs without the axes registry); hypothesis always present, "—" = no bet.
+FM_STAKE=""
+if [[ -n "$STATE" ]]; then
+  FM_STAKE="state_transition: \"${STATE}\"
+"
+fi
+FM_STAKE="${FM_STAKE}hypothesis: \"${HYPOTHESIS:-—}\""
 
 cat > "$WP_FILE" <<WPEOF
 ---
@@ -155,6 +255,7 @@ budget: ${BUDGET}
 created: ${TODAY}
 last_session: ${TODAY}
 related: []
+${FM_STAKE}
 activation: on-demand
 ---
 
@@ -197,12 +298,31 @@ WPEOF
 
 echo "   ✅ $WP_FILE"
 
-# --- Шаг 2: WP-REGISTRY.md ---
-echo "2/5 WP-REGISTRY.md..."
+# --- Шаг 2: archive stub ---
+echo "2/6 archive stub..."
 
-if ! python3 - "$REGISTRY" "$WP_NUM" "$PRIORITY" "$TITLE" "$REPO" "$BUDGET" "$GOV_REPO" <<'PYEOF'
+ARCHIVE_DIR="$STRATEGY/archive/wp-contexts"
+ARCHIVE_STUB="$ARCHIVE_DIR/WP-${WP_NUM}-${SLUG}.md"
+cat > "$ARCHIVE_STUB" <<ARCHEOF
+---
+wp: ${WP_NUM}
+title: "${TITLE}"
+created: ${TODAY}
+status: pending
+---
+
+# WP-${WP_NUM}: ${TITLE} — §Закрытие
+
+*(заполняется при закрытии РП)*
+ARCHEOF
+echo "   ✅ $ARCHIVE_STUB"
+
+# --- Шаг 3: WP-REGISTRY.md ---
+echo "3/6 WP-REGISTRY.md..."
+
+if ! python3 - "$REGISTRY" "$WP_NUM" "$PRIORITY" "$TITLE" "$REPO" "$BUDGET" "$GOV_REPO" "$STAKE_CELL" <<'PYEOF'
 import sys
-registry_path, wp_num, priority, title, repo, budget, gov_repo = sys.argv[1:8]
+registry_path, wp_num, priority, title, repo, budget, gov_repo, stake = sys.argv[1:9]
 
 with open(registry_path, "r", encoding="utf-8") as f:
     lines = f.readlines()
@@ -277,6 +397,8 @@ values_by_name = {
     "Ст": "⏳",
     "Репо": repo_cell,
     "Бюджет": budget,
+    # WP-505: optional column; silently skipped when the header lacks it
+    "Ставка": stake,
 }
 row_cells = ["—"] * len(header_cols)
 for name, idx in col_index.items():
@@ -304,8 +426,8 @@ if ! grep -qE "\| \*?\*?(WP-)?${WP_NUM}\*?\*? \|" "$REGISTRY"; then
   exit 1
 fi
 
-# --- Шаг 3: WeekPlan ---
-echo "3/5 WeekPlan..."
+# --- Шаг 4: WeekPlan ---
+echo "4/6 WeekPlan..."
 
 WEEKPLAN=$(find "$STRATEGY/current" -maxdepth 1 -name "WeekPlan W*.md" 2>/dev/null | sort -r | head -1)
 
@@ -343,8 +465,8 @@ else
   echo "   ⚠️  WeekPlan не найден в current/ — добавить вручную" >&2
 fi
 
-# --- Шаг 4: Strategy.md (только если --result задан и бюджет ≥3h) ---
-echo "4/5 Strategy.md..."
+# --- Шаг 5: Strategy.md (только если --result задан и бюджет ≥3h) ---
+echo "5/6 Strategy.md..."
 
 BUDGET_H=$(echo "$BUDGET" | sed 's/[^0-9]//g')
 if [[ -n "$RESULT" && "${BUDGET_H:-0}" -ge 3 ]]; then
@@ -390,8 +512,8 @@ else
   echo "   ℹ️  РП <3h — маппинг в Strategy.md не требуется"
 fi
 
-# --- Шаг 5: active-wp.md ---
-echo "5/5 active-wp.md..."
+# --- Шаг 6: active-wp.md ---
+echo "6/6 active-wp.md..."
 
 if [[ -f "$STRATEGY/scripts/build-active-wp.py" ]]; then
   python3 "$STRATEGY/scripts/build-active-wp.py" \
@@ -417,5 +539,6 @@ fi
 echo ""
 echo "✅ WP-${WP_NUM} создан: $TITLE"
 echo "   context: inbox/WP-${WP_NUM}/WP-${WP_NUM}.md"
+echo "   archive: archive/wp-contexts/WP-${WP_NUM}-${SLUG}.md"
 echo "   Следующий шаг: заполнить «Проблема», «Артефакт», «Фазы» в context file"
 echo "   Не забыть: Linear issue"
