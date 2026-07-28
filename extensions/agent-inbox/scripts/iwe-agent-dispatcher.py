@@ -2,7 +2,7 @@
 """
 iwe-agent-dispatcher.py — диспетчер Agent Inbox IWE (WP-324 Ф8).
 
-SoT (Source-of-Truth): ~/IWE/DS-my-strategy/scripts/iwe-agent-dispatcher.py
+SoT (Source-of-Truth): ~/IWE/<governance-repo>/scripts/iwe-agent-dispatcher.py
 Все другие копии должны синхронизироваться отсюда:
   - FMT-exocortex-template/scripts/
   - FMT-exocortex-template/extensions/agent-inbox/scripts/
@@ -84,7 +84,7 @@ COMMIT_AUTHOR_EMAIL = os.environ.get("IWE_DISPATCHER_AUTHOR_EMAIL", "noreply@exa
 # Git Data API (atomic write blob+tree+commit+ref). Без TOKEN — fallback на старый
 # stateful session-mode через локальный клон (--workdir обязателен).
 IWE_DISPATCHER_GITHUB_TOKEN = os.environ.get("IWE_DISPATCHER_GITHUB_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
-IWE_DISPATCHER_GITHUB_REPO = os.environ.get("IWE_DISPATCHER_GITHUB_REPO", "TserenTserenov/DS-my-strategy")
+IWE_DISPATCHER_GITHUB_REPO = os.environ.get("IWE_DISPATCHER_GITHUB_REPO", "your-username/your-governance-repo")
 IWE_DISPATCHER_GITHUB_BRANCH = os.environ.get("IWE_DISPATCHER_GITHUB_BRANCH", "main")
 IWE_DISPATCHER_ETAG_DB = os.path.expanduser(
     os.environ.get("IWE_DISPATCHER_ETAG_DB", "~/.iwe/dispatcher-etags.db")
@@ -416,7 +416,7 @@ def _guard_repo_dir_is_isolated(repo_dir: Path) -> None:
     """Отказ вместо тихого reset --hard / identity-перезаписи в живой рабочей копии пилота.
 
     bug-2026-07-25: --workdir ~/IWE (вместо изолированного /tmp/...) заставил ensure_workdir()
-    переписать git user.name/email в ~/IWE/DS-my-strategy и оставить это на будущее — коммиты
+    переписать git user.name/email в ~/IWE/<governance-repo> и оставить это на будущее — коммиты
     из живой рабочей копии стали подписываться как диспетчер. reset --hard в том же вызове
     мог бы стереть незакоммиченную работу пилота.
     """

@@ -86,6 +86,9 @@ echo -n "[1/5] Author-specific content... "
 CHECK1_FAIL=0
 
 # Глобальные (запрет везде, кроме CHANGELOG и GitHub URLs)
+# grep -i ниже (все вызовы этого паттерна): "tserentserenov" всегда встречался в
+# коде как "TserenTserenov" (mixed-case) — case-sensitive grep никогда не ловил
+# его, поймано только парным паттерном "DS-my-strategy" на тех же строках (2026-07-27).
 for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
                "DS-Knowledge-Index-Tseren" "DS-IT-systems" "DS-ai-systems" \
                "DS-my-strategy" "engines/tailor"; do
@@ -102,7 +105,7 @@ for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
                 *) continue ;;
             esac
             case "$(basename "$f")" in
-                validate-template.sh|LEARNING-PATH.md|CHANGELOG.md) continue ;;
+                validate-template.sh|LEARNING-PATH.md|CHANGELOG.md|aisystant-sync-targets.yaml|translation-manifest.yaml) continue ;;
             esac
             # issue #308: docs/adr/* — historical ADR docs describing the past
             # authorial install, same exemption class as LEARNING-PATH.md/CHANGELOG.md above.
@@ -110,18 +113,22 @@ for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
                 docs/adr/*) continue ;;
             esac
             file_hits=$(cd "$TEMPLATE_DIR" && git show ":$f" 2>/dev/null \
-                | grep -n "$pattern" | grep -v 'github.com/' | grep -v 'docs/adr/' || true)
+                | grep -in "$pattern" | grep -v 'github.com/' | grep -v 'docs/adr/' \
+                | grep -v 'githubusercontent\.com' \
+                | grep -viE 'TserenTserenov/(FMT-exocortex-template|ZP|SPF)' || true)
             if [ -n "$file_hits" ]; then
                 count=$((count + $(echo "$file_hits" | wc -l | tr -d ' ')))
                 hits="${hits}${f}:"$'\n'"${file_hits}"$'\n'
             fi
         done <<< "$STAGED_FILES"
     else
-        count=$(grep -rn "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
+        count=$(grep -rin "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
                 --include="*.py" --include="*.json" --include="*.plist" --include="*.yaml" \
                 --exclude='validate-template.sh' --exclude='LEARNING-PATH.md' \
-                --exclude='CHANGELOG.md' --exclude-dir='guide-kit' 2>/dev/null \
-                | grep -v 'github.com/' | grep -v 'docs/adr/' | wc -l | tr -d ' ' || true)
+                --exclude='CHANGELOG.md' --exclude='aisystant-sync-targets.yaml' \
+                --exclude='translation-manifest.yaml' --exclude-dir='guide-kit' 2>/dev/null \
+                | grep -v 'github.com/' | grep -v 'docs/adr/' | grep -v 'githubusercontent\.com' \
+                | grep -viE 'TserenTserenov/(FMT-exocortex-template|ZP|SPF)' | wc -l | tr -d ' ' || true)
     fi
     if [ "$count" -gt 0 ]; then
         [ "$CHECK1_FAIL" -eq 0 ] && echo "FAIL"
@@ -129,11 +136,13 @@ for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" \
         if [ "$MODE" = "staged" ]; then
             echo "$hits" | head -3 || true
         else
-            grep -rn "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
+            grep -rin "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
                 --include="*.py" --include="*.json" --include="*.plist" \
                 --exclude='validate-template.sh' --exclude='LEARNING-PATH.md' \
-                --exclude='CHANGELOG.md' --exclude-dir='guide-kit' 2>/dev/null \
-                | grep -v 'github.com/' | grep -v 'docs/adr/' | head -3 || true
+                --exclude='CHANGELOG.md' --exclude='aisystant-sync-targets.yaml' \
+                --exclude='translation-manifest.yaml' --exclude-dir='guide-kit' 2>/dev/null \
+                | grep -v 'github.com/' | grep -v 'docs/adr/' | grep -v 'githubusercontent\.com' \
+                | grep -viE 'TserenTserenov/(FMT-exocortex-template|ZP|SPF)' | head -3 || true
         fi
         CHECK1_FAIL=1
         FAIL=1
@@ -181,7 +190,7 @@ done
 if [ "$MODE" = "staged" ] && [ "$(cd "$TEMPLATE_DIR" && git status --porcelain 2>/dev/null | grep -c '^.M')" -gt 0 ]; then
     UNSTAGED_WARN=0
     for pattern in "tserentserenov" "PACK-MIM" "aist_bot_newarchitecture" "DS-IT-systems"; do
-        warn_count=$(grep -rn "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
+        warn_count=$(grep -rin "$pattern" "$TEMPLATE_DIR" --include="*.md" --include="*.sh" \
                      --include="*.py" --include="*.yaml" \
                      --exclude='validate-template.sh' --exclude='CHANGELOG.md' 2>/dev/null \
                      | grep -v 'github.com/' | wc -l | tr -d ' ' || true)

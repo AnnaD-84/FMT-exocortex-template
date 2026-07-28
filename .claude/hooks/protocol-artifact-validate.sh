@@ -149,19 +149,12 @@ if [ -n "$WEEKPLAN" ] && [ -f "$WEEKPLAN" ]; then
     WP_ERRORS+=("WeekPlan >80 строк ($WP_LINES) но секций (## или <summary>) < 3 ($WP_HEADINGS_COUNT). Используй ## заголовки или <details><summary> для структурирования.")
   fi
 
-  # Детектор (в): обязательные секции WeekPlan (по templates-dayplan.md)
-  # ОПТ-5 (WP-297, 8 май): «Итоги» переехали в WeekReport — больше не required в WeekPlan
-  WP_REQUIRED=(
-    "Повестка|Agenda"
-    "Inbox Triage"
-    "План на неделю|Week Plan"
-    "Контент-план|Content Plan"
-  )
-  for wp_section in "${WP_REQUIRED[@]}"; do
-    if ! grep -qE "$wp_section" "$WEEKPLAN"; then
-      WP_MISSING_LIST+=("$wp_section")
-    fi
-  done
+  # Детектор (в) — обязательные секции WeekPlan — удалён (issue #318 hotfix,
+  # 2026-07-28): список заголовков дважды подряд отставал от реальной структуры
+  # и при проверке на всей истории пилота блокировал 23 из 24 архивных файлов
+  # (секции вроде "## Carry-over" появляются только на Week Close, не в течение
+  # недели). Структура WeekPlan меняется слишком часто для жёсткого gate по
+  # именам заголовков — детектор (а) выше остаётся, он от них не зависит.
 
   # Детектор (г): WeekReport валидация (ОПТ-5 WP-297)
   # issue #248: та же болезнь — раньше брался ПОСЛЕДНИЙ WeekReport на диске,

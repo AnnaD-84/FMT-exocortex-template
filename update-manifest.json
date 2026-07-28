@@ -1023,6 +1023,9 @@
       "path": "roles/extractor/scripts/systemd/iwe-extractor-inbox-check.timer"
     },
     {
+      "path": "roles/extractor/scripts/wp429-extractor-prefilters.py"
+    },
+    {
       "path": "roles/role-boundaries.md"
     },
     {

@@ -2,7 +2,7 @@
 # routing: helper  called-by=wp-gate  deterministic=true
 # see DP.SC.159, DP.ROLE.059
 # create-wp.sh — атомарное создание РП в 4 местах (inbox, REGISTRY, WeekPlan, Linear)
-# see WP-297 Ф6.2 (DS-my-strategy/inbox/WP-297-wp-lifecycle-architecture.md)
+# see WP-297 Ф6.2 (<governance-repo>/inbox/WP-297-wp-lifecycle-architecture.md)
 # see DP.M.010, DP.ROLE.037
 #
 # Использование:
@@ -26,18 +26,10 @@ set -uo pipefail
 IWE="${IWE_ROOT:-$HOME/IWE}"
 
 # --- Определить governance-репо ---
-# Приоритет: (1) явная переменная IWE_GOVERNANCE_REPO → (2) DS-my-strategy → (3) DS-strategy
-GOV_REPO="${IWE_GOVERNANCE_REPO:-}"
-if [[ -z "$GOV_REPO" ]]; then
-  for candidate in DS-my-strategy DS-strategy; do
-    if [[ -d "$IWE/$candidate" ]]; then
-      GOV_REPO="$candidate"
-      break
-    fi
-  done
-fi
-if [[ -z "$GOV_REPO" ]]; then
-  echo "ERROR: IWE_GOVERNANCE_REPO not set and neither DS-my-strategy nor DS-strategy found in $IWE" >&2
+# Приоритет: (1) явная переменная IWE_GOVERNANCE_REPO → (2) DS-strategy (конвенция по умолчанию)
+GOV_REPO="${IWE_GOVERNANCE_REPO:-DS-strategy}"
+if [[ -z "$IWE_GOVERNANCE_REPO" ]] && [[ ! -d "$IWE/$GOV_REPO" ]]; then
+  echo "ERROR: IWE_GOVERNANCE_REPO not set and $GOV_REPO not found in $IWE" >&2
   exit 1
 fi
 
@@ -202,7 +194,7 @@ result = ''
 for c in s:
     result += tr.get(c, c)
 result = re.sub(r'[^a-z0-9]+', '-', result)
-result = result.strip('-')[:40]
+result = result[:40].strip('-')
 print(result)
 " 2>/dev/null || echo "wp-$(echo "$TITLE" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-30)")
 fi
@@ -429,37 +421,60 @@ fi
 # --- Шаг 4: WeekPlan ---
 echo "4/6 WeekPlan..."
 
-WEEKPLAN=$(find "$STRATEGY/current" -maxdepth 1 -name "WeekPlan W*.md" 2>/dev/null | sort -r | head -1)
+# issue (2026-07-27, WP-507 registration): governance repos also name the file
+# "WeekPlan {year}-W{N} {date} (label).md" (night-cycle orchestrator), not just
+# "WeekPlan W{N}.md" — the old exact-prefix glob silently missed those files.
+WEEKPLAN=$(find "$STRATEGY/current" -maxdepth 1 -name "WeekPlan*.md" 2>/dev/null | sort -r | head -1)
 
 if [[ -n "$WEEKPLAN" ]]; then
-  python3 - "$WEEKPLAN" "$WP_NUM" "$TITLE" "$PRIORITY" "$BUDGET" "$GOV_REPO" <<'PYEOF'
+  python3 - "$WEEKPLAN" "$WP_NUM" "$TITLE" "$PRIORITY" "$BUDGET" <<'PYEOF'
 import sys, re
-weekplan_path, wp_num, title, priority, budget, gov_repo = sys.argv[1:7]
+weekplan_path, wp_num, title, priority, budget = sys.argv[1:6]
 
 # Маппинг приоритета → светофор
 flag_map = {"P1": "🔴", "P2": "🟡", "P3": "🟢", "P4": "⚪", "P5": "⚪"}
 flag = flag_map.get(priority, "⚪")
-
-with open(weekplan_path, "r", encoding="utf-8") as f:
-    content = f.read()
-
-# Убрать часы из budget для поля h
 h_val = re.sub(r"[^0-9\-]", "", budget) or "?"
 
-new_row = "| {} | {} | **{}** — [описание] | {} | pending | W{} | {} |\n".format(
-    flag, wp_num, title, h_val,
-    re.search(r"W(\d+)", weekplan_path).group(1) if re.search(r"W(\d+)", weekplan_path) else "?",
-    gov_repo + "/inbox"
-)
+with open(weekplan_path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
 
-anchor = next((a for a in ["**Бюджет недели:**", "**Бюджет итого:**"] if a in content), None)
-if anchor:
-    content = content.replace(anchor, new_row + anchor, 1)
-    with open(weekplan_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print("   ✅ WeekPlan: строка WP-{} добавлена".format(wp_num))
+# issue (2026-07-27, WP-507 registration): the old writer matched a text anchor
+# ("**Бюджет недели:**"/"**Бюджет итого:**") and a fixed 7-field column order —
+# neither exists in the current WeekPlan format (summary line is now "**Бюджет:**",
+# table header is "🚦 | # | РП | P | h | Статус | Результат"). Locate the table by
+# its actual header instead, same name-based technique as the REGISTRY writer, so
+# column order/extra columns don't silently corrupt the row.
+header_line = None
+insert_at = None
+for i, line in enumerate(lines):
+    if line.strip().startswith("|---") and i > 0 and "РП" in lines[i - 1] and "Статус" in lines[i - 1]:
+        header_line = lines[i - 1]
+        insert_at = i + 1
+        break
+
+if insert_at is None:
+    print("   ⚠️  WeekPlan: таблица недели (заголовок РП/Статус) не найдена — добавить вручную", file=sys.stderr)
 else:
-    print("   ⚠️  WeekPlan: якорь 'Бюджет недели' / 'Бюджет итого' не найден — добавить вручную", file=sys.stderr)
+    header_cols = [c.strip() for c in header_line.strip().strip("|").split("|")]
+    values_by_name = {
+        "🚦": flag,
+        "#": wp_num,
+        "РП": "**{}** — [описание]".format(title),
+        "P": priority,
+        "h": h_val,
+        "Статус": "pending",
+        "Результат": "[заполнить]",
+    }
+    row_cells = ["—"] * len(header_cols)
+    for idx, name in enumerate(header_cols):
+        if name in values_by_name:
+            row_cells[idx] = values_by_name[name]
+    new_row = "| " + " | ".join(row_cells) + " |\n"
+    lines.insert(insert_at, new_row)
+    with open(weekplan_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    print("   ✅ WeekPlan: строка WP-{} добавлена".format(wp_num))
 PYEOF
 else
   echo "   ⚠️  WeekPlan не найден в current/ — добавить вручную" >&2

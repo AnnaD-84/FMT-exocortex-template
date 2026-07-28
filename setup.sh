@@ -676,6 +676,17 @@ else
     echo "[4e] Generating executor-catalog.yaml..."
     if CATALOG_OUTPUT=$(IWE_GOVERNANCE_REPO="$GOVERNANCE_REPO" python3 "$TEMPLATE_DIR/scripts/generate-executor-catalog.py" 2>&1); then
         echo "$CATALOG_OUTPUT" | sed 's/^/  /'
+    elif echo "$CATALOG_OUTPUT" | grep -q "No module named 'yaml'"; then
+        # Голая Ubuntu/Debian не тащит PyYAML в system python3 (issue найден живым
+        # прогоном WP-5, 2026-07-27) — сырой traceback пугает новичка без подсказки.
+        echo "  ⚠ executor-catalog.yaml не сгенерирован — не хватает библиотеки PyYAML для python3."
+        if [ "$(uname)" = "Linux" ]; then
+            echo "    Установи: sudo apt install python3-yaml (или: pip3 install pyyaml, если pip3 уже стоит)"
+        else
+            echo "    Установи: pip3 install pyyaml"
+        fi
+        echo "    Потом выполни вручную:"
+        echo "    python3 $TEMPLATE_DIR/scripts/generate-executor-catalog.py"
     else
         echo "$CATALOG_OUTPUT" | sed 's/^/  /'
         echo "  ⚠ executor-catalog.yaml не сгенерирован — запусти вручную:"
@@ -791,6 +802,14 @@ else
         git init
         git add -A
         git commit -m "Initial exocortex: DS-strategy governance hub"
+
+        # Enable secrets-check pre-commit hook (issue #317: install-iwe-paths.sh
+        # runs at step [4d], before this repo exists — its auto-enable loop can't
+        # see it on first setup.sh run, and update.sh never calls that script).
+        if [ -d "$MY_STRATEGY_DIR/.githooks" ]; then
+            git config core.hooksPath .githooks 2>/dev/null && \
+                echo "  Pre-commit hook enabled (.githooks/)" || true
+        fi
 
         if ! $CORE_ONLY; then
             # Create GitHub repo (full mode only)
