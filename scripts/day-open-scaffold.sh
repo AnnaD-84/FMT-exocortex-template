@@ -824,7 +824,7 @@ render_gate_metrics() {
     echo "> Лог gate-решений не найден: \`$log\`"
     echo "> Запустите \`iwe-agent-dispatcher.py\` или \`overnight-auditor.sh\`, чтобы появились данные."
   else
-    bash "$script" "$log" 2>/dev/null || echo "> ⚠️ gate-metrics.sh завершился с ошибкой"
+    bash "$script" "$log" "$DATE" 2>/dev/null || echo "> ⚠️ gate-metrics.sh завершился с ошибкой"
   fi
   echo ""
   echo "</details>"
@@ -863,8 +863,14 @@ render_content_cleanup() {
     echo "> Реестр сигналов очистки базы знаний не настроен."
     return
   fi
+  # Only CC-entries before the first "## Архив"/"## Разобрано" heading are open --
+  # resolved entries move under those headings but their <summary> line itself never
+  # gets a ✅ marker (only a prose note in "## Метрики"), so filtering on ✅ alone
+  # kept surfacing months-old closed signals as "N на разбор" (found 2026-07-28: CC-103,
+  # closed 2026-06-14, still showed up because its heading had no ✅).
   local open
-  open=$(grep -E '<summary><strong>CC-[0-9]' "$file" | grep -v '✅' || true)
+  open=$(awk '/^## (Архив|Разобрано)/{exit} {print}' "$file" \
+    | grep -E '<summary><strong>CC-[0-9]' || true)
   if [ -z "$open" ]; then
     echo "> Разобрано — открытых сигналов нет."
     return

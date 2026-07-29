@@ -110,6 +110,46 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
+
+
+## [Unreleased] — обновлено 2026-07-28
+
+### Added
+
+- `3cd8d01` feat(wp-429-f6.5): пре-фильтры фабрикации ID и cross-report дублей в extractor.sh
+- `9fcc6d9` feat(apply-captures): Ф6.4 фасетный классификатор (шаг 4в-0) + routing.yaml как SoT для 4в
+- `35944f3` feat(wp505): create-wp.sh --state (обязателен при реестре осей) + --hypothesis, ячейка «Ставка»; /wp-new и protocol-open — ставка и гипотеза в ритуале создания РП
+
+### Changed
+
+- `c34f8ab` chore(release): weekly auto-bump to v0.36.2
+- `da9faad` sync: iwe-agent-dispatcher.py from DS-my-strategy (WP-503 Ф5.1/5.2)
+- `c516145` security: WP-500 Ф1 — синхронизировать фикс утечки трейсов в облако
+- `5e13c05` docs(changelog): thank vakungur (#312/#311/#310) and VxxxlBxxxxv (#308)
+
+### Fixed
+
+- `0873dde` fix: promote day-open-pipeline.sh — facts_digest guard fix (WP-484)
+- `cef6352` fix(hooks): revert WeekPlan section-list gate — broke 23/24 real WeekPlans (issue #318 hotfix)
+- `fe0b908` fix(setup): githooks provisioning for DS-strategy + WeekPlan validator drift (#317, #318)
+- `022d290` fix(apply-captures): привести гейт 4а.1 к дословному эталону из bug-файла
+- `c0113ce` fix(apply-captures): гейт Forces/Bias-Annotation для новых карточек методов
+- `afdce30` fix(create-wp): три дефекта в WeekPlan-writer и slug-обрезке
+- `16edace` fix(setup): понятная подсказка вместо traceback при отсутствии PyYAML (шаг 4e)
+- `a73e9e8` fix(cloud-scheduler): явный skip backup-memory job, если exocortex/ в .gitignore
+- `d3f63d2` fix(seed-drift): синхронизировать seed-копию day-open-scaffold.sh
+- `877c587` fix(ci): устранить 2 красных джоба на main — hardcode-паттерн + badge-дрейф
+- `4303c8e` fix(template): genericize username in examples + narrow author-check exemption
+- `c7a0494` fix(#315,#316): регрессии из ee0795c — независимый код-ревью субагентом
+- `be48c84` fix(template): de-link private-repo references + close case-sensitivity gap in validator
+- `ffed001` fix(template): remove author-specific DS-my-strategy leak (validate-template FAIL)
+- `ee0795c` fix(#316,#315,#314): issue funnel — 3 бага свежих установок
+- `9324f54` fix(review): 2 regressions in e190ba2 found by independent code review
+- `c4e4152` fix: добавить поддержку колонки «Ставка» в create-wp.sh (WP-505)
+- `e190ba2` fix(#312,#311,#308): issue funnel — устаревшая инструкция, ложный блок гейта, author-leak на ADR + exec-bit
+- `c02f663` fix(strategist): table_to_list() column mapping — DayPlan/WeekPlan diverged formats
+
+
 ## [0.36.2] — 2026-07-26
 
 Спасибо **vakungur** за три находки: #312 (`/wp-new` обещал заготовку §Закрытия в архиве, которую `create-wp.sh` больше не создаёт с #280 — инструкция скилла обновлена на актуальные 4 места записи), #311 (Extensions Gate блокировал создание СВОЕГО навыка — документированный `extend/SKILL.md` путь реально не работал; хук теперь сверяется с манифестом платформы, а не блокирует по одной лишь маске каталога). Отдельно поднятый вопрос #310 (IntegrationGate заявлен блокирующим, а детектор нигде не подключён к хукам) подтверждён, но требует решения по объёму фикса — issue остаётся открытым.

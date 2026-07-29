@@ -465,6 +465,9 @@
       "path": "docs/AGENT-FAULT-PROCESS.md"
     },
     {
+      "path": "docs/AGENT-VENDOR-SETUP.md"
+    },
+    {
       "path": "docs/BROWSER-CI-TEMPLATE.md"
     },
     {
@@ -505,6 +508,9 @@
     },
     {
       "path": "docs/SETUP-GUIDE.md"
+    },
+    {
+      "path": "docs/VERIFY-KNOWLEDGE-MCP.md"
     },
     {
       "path": "docs/adr/ADR-001-setup-in-template.md"
@@ -589,6 +595,9 @@
     },
     {
       "path": "extensions/agent-inbox/SPEC.md"
+    },
+    {
+      "path": "extensions/agent-inbox/scripts/config/pipeline-security-whitelist.yaml"
     },
     {
       "path": "extensions/agent-inbox/scripts/iwe-agent-dispatcher.py"
@@ -835,6 +844,12 @@
     },
     {
       "path": "memory/MEMORY.md"
+    },
+    {
+      "path": "memory/agent-architecture-framework.md"
+    },
+    {
+      "path": "memory/agent-vendor-connect-pattern.md"
     },
     {
       "path": "memory/checklists.md"
@@ -1302,6 +1317,9 @@
       "path": "scripts/codex-peer-adapter.sh"
     },
     {
+      "path": "scripts/config/pipeline-security-whitelist.yaml"
+    },
+    {
       "path": "scripts/content-filter-apply.py"
     },
     {
@@ -1588,6 +1606,9 @@
     },
     {
       "path": "scripts/wp-list.py"
+    },
+    {
+      "path": "scripts/wp499-agent-coordination-test.sh"
     },
     {
       "path": "sessions/00-index.md"

@@ -720,6 +720,29 @@ def _classify_claude_failure(stderr: str, stdout: str) -> str:
 # invariant). See: inbox/WP-428/adr-unified-bot-router.md (v2).
 # =============================================================================
 
+_SECURITY_WHITELIST_PATH = Path(__file__).parent / "config" / "pipeline-security-whitelist.yaml"
+
+
+def _load_disallowed_tools() -> list[str]:
+    """WP-503 Ф9 (АрхГейт Ф5 NBR №3): headless Executor не должен повторить
+    инцидент WP-7 23.07 (`railway list_variables` без фильтра напечатал ~90
+    боевых секретов). Читает файл заново на каждый вызов (не кэширует) —
+    расширение whitelist не требует перезапуска диспетчера.
+
+    Пустой список при отсутствующем/битом файле — это НЕ fail-open дыра:
+    отсутствие --disallowedTools просто не сужает права сверх дефолтных
+    permission-настроек CLI, whitelist добавляет ограничения, не снимает их."""
+    import yaml
+    try:
+        with open(_SECURITY_WHITELIST_PATH, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as e:
+        log(f"security whitelist не загружен ({_SECURITY_WHITELIST_PATH}): {e}, продолжаю без --disallowedTools", "WARN")
+        return []
+    tools = data.get("disallowed_tools") or []
+    return [str(t) for t in tools if isinstance(t, str)]
+
+
 class Executor:
     """Base agentic executor: builds the headless CLI command for one runtime."""
 
@@ -738,7 +761,11 @@ class ClaudeCodeExecutor(Executor):
     supports_heartbeat = True
 
     def build_cmd(self, prompt: str, model: str) -> list[str]:
-        return ["claude", "-p", prompt, "--model", model, "--output-format", "text"]
+        cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "text"]
+        disallowed = _load_disallowed_tools()
+        if disallowed:
+            cmd += ["--disallowedTools", ",".join(disallowed)]
+        return cmd
 
 
 class KimiCliExecutor(Executor):
