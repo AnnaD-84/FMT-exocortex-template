@@ -63,7 +63,10 @@ Day Close = протокол. Исполнять ТОЛЬКО пошагово �
 - Done РП → удалить строку из MEMORY.md. MEMORY.md хранит ТОЛЬКО активные РП.
 
 ### 4б. Memory Drift Scan
-Grep MEMORY.md на паттерны «ждёт/блокер/blocked/остановлен». Для каждого: найти WP-context, проверить статус, обновить устаревшее. Анонс при 0 изменениях: *«Drift-scan: N паттернов, устаревших нет»*.
+Две независимые проверки (issue #326 — лексическая одна пропускала расхождения статуса без триггерных слов):
+1. **Структурная:** `python3 ${IWE_TEMPLATE:-{{HOME_DIR}}/IWE/FMT-exocortex-template}/.claude/scripts/memory-drift-scan.py` — сверяет колонку «Статус» MEMORY.md с полем `status` WP-context по номеру РП. Exit 1 → для каждой найденной строки обновить устаревшее.
+2. **Лексическая:** Grep MEMORY.md на паттерны «ждёт/блокер/blocked/остановлен» (ловит текстовые блокеры без изменения статуса — отдельный класс, скрипт п.1 их не видит). Для каждого: найти WP-context, проверить статус, обновить устаревшее.
+Анонс при 0 расхождений по обеим проверкам: *«Drift-scan: N паттернов + M структурных, устаревших нет»*.
 <!-- Детали: day-close-details.md § Шаг 4б -->
 
 ### 4в. Index Health Check
@@ -105,8 +108,11 @@ TODAY_DAYPLAN="${IWE_GOVERNANCE_REPO:-DS-strategy}/archive/day-plans/DayPlan $(d
 ### 10. Rule Classifier
 `SCRIPT="$HOME/IWE/.claude/scripts/rule-classifier.py"; [ -f "$SCRIPT" ] && python3 "$SCRIPT" || echo "skip: rule-classifier.py требует ручной установки (claude CLI + PACK-agent-rules)"` (идемпотентно, kill если >60 сек). **ДО коммита** — иначе его правки уходят в незакоммиченный хвост (issue #249).
 
+### 10a. Extensions (after)
+`bash .claude/scripts/load-extensions.sh day-close after` → exit 0: `Read` каждый файл из вывода (alphabetic) → выполнить. Exit 1 → пропустить. Поддерживает `extensions/day-close.after.md` И `extensions/day-close.after.<suffix>.md`. Симметрично week-close (шаг 9): вызывается ДО финального коммита (10b), чтобы правки расширений попадали в тот же коммит, не оставались незакоммиченным хвостом (issue #320/#322).
+
 ### 10b. Финальный коммит (все затронутые репозитории, не только governance)
-`git status --short` по КАЖДОМУ репо, который сессия трогала за день — как минимум workspace root (`{{HOME_DIR}}/IWE/`, там физически лежат `MEMORY.md` и `memory/*.md`, их правят шаги 4б/4) и `${IWE_GOVERNANCE_REPO:-DS-strategy}` (WeekPlan/DayPlan/WP-REGISTRY). Незафиксированное → `git add <specific paths>` → commit → push. Переходить к шагу 11 только когда `git status` чист во всех репо.
+`git status --short` по КАЖДОМУ репо, который сессия трогала за день — как минимум workspace root (`{{HOME_DIR}}/IWE/`, там физически лежат `MEMORY.md` и `memory/*.md`, их правят шаги 4б/4) и `${IWE_GOVERNANCE_REPO:-DS-strategy}` (WeekPlan/DayPlan/WP-REGISTRY). Незафиксированное (включая правки шага 10a) → `git add <specific paths>` → commit → push. Переходить к шагу 11 только когда `git status` чист во всех репо.
 
 ### 10c. Heartbeat для Day Open guard
 Пишется ПОСЛЕ push шага 10b — DayPlan уже реально закоммичен. day-open-pipeline.sh на следующий день читает этот файл как сигнал «Day Close сделан» (fallback — присутствие архивного DayPlan в git, симметрично day-open):

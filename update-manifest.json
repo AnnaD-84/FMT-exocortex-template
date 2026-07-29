@@ -174,6 +174,9 @@
       "path": ".claude/scripts/load-extensions.sh"
     },
     {
+      "path": ".claude/scripts/memory-drift-scan.py"
+    },
+    {
       "path": ".claude/scripts/wp-sync-bundle.sh"
     },
     {
@@ -435,6 +438,9 @@
       "path": ".githooks/pre-commit"
     },
     {
+      "path": ".github/workflows/cloud-scheduler.yml"
+    },
+    {
       "path": ".gitignore"
     },
     {
@@ -471,6 +477,9 @@
       "path": "docs/BROWSER-CI-TEMPLATE.md"
     },
     {
+      "path": "docs/CLOUD-SCHEDULER.md"
+    },
+    {
       "path": "docs/DATA-POLICY.md"
     },
     {
@@ -478,6 +487,9 @@
     },
     {
       "path": "docs/IWE-HELP.md"
+    },
+    {
+      "path": "docs/KIMI-BROWSER-SETUP.md"
     },
     {
       "path": "docs/KIMI-SETUP.md"
@@ -1617,6 +1629,9 @@
       "path": "setup.sh"
     },
     {
+      "path": "setup/optional/setup-cloud-scheduler.sh"
+    },
+    {
       "path": "setup/validate-template.sh"
     },
     {
@@ -1658,6 +1673,7 @@
     "scripts/tests/conftest.py",
     "scripts/tests/test_agent_dashboard.py",
     "scripts/tests/test_copy_to_aisystant.py",
+    "scripts/tests/test_create_wp_weekplan_writer.py",
     "scripts/tests/test_day_close_prepare.py",
     "scripts/tests/test_delivery_content.py",
     "scripts/tests/test_delivery_formal.py",

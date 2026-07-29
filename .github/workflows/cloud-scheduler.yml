@@ -2,7 +2,7 @@ name: IWE Cloud Scheduler (базовый)
 
 # Облачный планировщик IWE — базовый уровень (без LLM).
 # Выполняет задачи, которые не требуют Claude API:
-# - Backup memory/ и CLAUDE.md в exocortex/
+# - Backup memory/ в exocortex/ (CLAUDE.md — НЕ здесь, см. #172: корневой CLAUDE.md бэкапит day-close.sh локально)
 # - Health check ночной автоматики
 #
 # Для пользователей шаблона FMT-exocortex-template.
@@ -41,9 +41,10 @@ jobs:
     name: Backup memory → exocortex
     runs-on: ubuntu-latest
     if: >-
+      github.repository == 'TserenTserenov/FMT-exocortex-template' && (
       github.event_name == 'schedule' ||
       github.event.inputs.task == 'all' ||
-      github.event.inputs.task == 'backup'
+      github.event.inputs.task == 'backup' )
     steps:
       - name: Checkout strategy repo
         if: env.STRATEGY_REPO != ''
@@ -60,6 +61,18 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           BACKUP_DIR="exocortex"
 
+          # WP-7 Ф-Backup-Resilience-Audit (27.07): если exocortex/ в .gitignore этого
+          # репозитория (пилот мог осознанно вынести память из git — личные данные,
+          # см. WP-500 Ф3), git add ниже молча ничего не сделает и джоба каждую ночь
+          # будет писать "No changes to backup", не объясняя причину. Явный skip вместо
+          # тихого no-op — офсайт-защита памяти в этом случае идёт другим каналом
+          # (например restic на собственном сервере), не этим GitHub Actions job.
+          if git check-ignore -q "$BACKUP_DIR" 2>/dev/null; then
+            echo "⚠️  $BACKUP_DIR/ в .gitignore этого репозитория — облачный бэкап памяти пропущен."
+            echo "    Офсайт-защита memory/ обеспечивается другим каналом (см. свою backup-policy)."
+            exit 0
+          fi
+
           mkdir -p "$BACKUP_DIR"
 
           # Копируем memory/ файлы если есть
@@ -71,11 +84,12 @@ jobs:
             echo "✓ Memory files backed up"
           fi
 
-          # Копируем CLAUDE.md из корня workspace если есть
-          if [ -f "CLAUDE.md" ]; then
-            cp "CLAUDE.md" "$BACKUP_DIR/CLAUDE.md"
-            echo "✓ CLAUDE.md backed up"
-          fi
+          # CLAUDE.md НЕ копируется из облака (#172). Слот exocortex/CLAUDE.md семантически =
+          # бэкап КОРНЕВОГО CLAUDE.md рабочей папки: restore-from-exocortex.sh разворачивает его
+          # в $WORKSPACE_DIR/CLAUDE.md. Облако клонирует только STRATEGY_REPO и физически не видит
+          # корневой CLAUDE.md (в слоёной топологии он не лежит ни в одном репо), а CLAUDE.md самого
+          # STRATEGY_REPO уже под git в этом же репо. Корневой бэкапит day-close.sh локально —
+          # это единственно возможное место. Не возвращать копирование сюда (затрёт локальный бэкап).
 
           # Проверяем, есть ли изменения
           if git diff --quiet -- "$BACKUP_DIR/"; then
@@ -99,9 +113,10 @@ jobs:
     name: Health check (ночная автоматика)
     runs-on: ubuntu-latest
     if: >-
+      github.repository == 'TserenTserenov/FMT-exocortex-template' && (
       github.event_name == 'schedule' ||
       github.event.inputs.task == 'all' ||
-      github.event.inputs.task == 'health-check'
+      github.event.inputs.task == 'health-check' )
     steps:
       - name: Checkout strategy repo
         if: env.STRATEGY_REPO != ''
