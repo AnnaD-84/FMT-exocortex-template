@@ -26,22 +26,14 @@ set -uo pipefail
 
 # Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# iwe-env-bootstrap.sh sets its own top-level SCRIPT_DIR when sourced below, clobbering
-# ours — save this script's own directory under a distinct name first (issue #262).
 TEMPLATE_SCRIPTS_DIR="$SCRIPT_DIR"
 source "$TEMPLATE_SCRIPTS_DIR/lib/common.sh"
-# Bootstrap sets IWE_ROOT/WORKSPACE_DIR/etc. It may be ABSENT on some hosts — tsekh-1's
-# extension sync does not copy .claude/lib/ — so source it only if present and never let
-# its absence abort the scaffold (the old `|| exit 1` killed every run on tsekh-1, which
-# is why the night generator always fell back to free-form synthesis).
-if [ -f "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" ]; then
-  source "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" || exit 1
-fi
-# Derive the essentials the scaffold + its helpers rely on. Bootstrap exports IWE_ROOT,
-# but the script uses $IWE; a clean caller (launchd / pipeline subprocess) exports
-# neither, so under `set -u` $IWE tripped «unbound variable» a few lines down.
-IWE_ROOT="${IWE_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-IWE="${IWE:-$IWE_ROOT}"
+# issue #329: old fallback assumed $SCRIPT_DIR/.. is always the workspace root —
+# false for a promoted copy at <governance-repo>/scripts/, which doubled the repo
+# name into every path. iwe_resolve_root() uses env-var precedence instead of
+# script-location guessing.
+IWE="$(iwe_resolve_root)"
+IWE_ROOT="$IWE"
 export IWE_ROOT IWE
 DATE="${1:-$(date +%Y-%m-%d)}"
 CONFIG="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/exocortex/day-rhythm-config.yaml"

@@ -106,17 +106,38 @@ if grep -q "Наработки Scout" "$DAYPLAN" 2>/dev/null; then
 fi
 
 # --- Ф3 Check 3: формат мультипликатора ---
-if ! grep -qE "~[0-9]+\.?[0-9]*x" "$DAYPLAN"; then
-  ERRORS+=("Мультипликатор не найден — нужен формат '~N.Nx' в строке бюджета")
+# issue #328: без сконфигурированного учёта времени мультипликатор считать не из
+# чего — принуждение к числу даёт фиктивное '~1.0x', которое через месяц читается
+# как измерение. Явная текстовая оговорка ("мультипликатор не считаю"/"не
+# настроен") — такое же честное состояние поля, как и само число.
+if ! grep -qE "~[0-9]+\.?[0-9]*x" "$DAYPLAN" && ! grep -qiE "мультипликатор.*(не считаю|не наст)" "$DAYPLAN"; then
+  ERRORS+=("Мультипликатор не найден — нужен формат '~N.Nx' в строке бюджета, либо явная оговорка 'мультипликатор не считаю'")
 fi
 
 # --- Ф3 Check 4 (legacy): mandatory check и бюджет ---
-if ! grep -qi "mandatory" "$DAYPLAN"; then
-  ERRORS+=("Mandatory check (WP-7 + контентный РП) не найден")
+# issue #328: "mandatory" был зашит текстом одной конкретной установки (WP-7 +
+# авторский контентный РП). Источник истины — mandatory_daily_wps в
+# day-rhythm-config.yaml; закомментирован/пуст → пользователь явно сконфигурировал
+# "обязательных РП нет", секцию в DayPlan не требуем.
+MANDATORY_WPS_CONFIGURED=false
+DAY_RHYTHM_CONFIG="$WORKSPACE/memory/day-rhythm-config.yaml"
+if [ -f "$DAY_RHYTHM_CONFIG" ] && command -v python3 >/dev/null 2>&1; then
+  if python3 -c "
+import yaml, sys
+d = yaml.safe_load(open(sys.argv[1])) or {}
+sys.exit(0 if d.get('mandatory_daily_wps') else 1)
+" "$DAY_RHYTHM_CONFIG" 2>/dev/null; then
+    MANDATORY_WPS_CONFIGURED=true
+  fi
+fi
+if [ "$MANDATORY_WPS_CONFIGURED" = "true" ] && ! grep -qi "mandatory" "$DAYPLAN"; then
+  ERRORS+=("Mandatory check не найден (mandatory_daily_wps сконфигурирован в day-rhythm-config.yaml)")
 fi
 
-if ! grep -qE "~[0-9]+\.?[0-9]*h РП" "$DAYPLAN"; then
-  ERRORS+=("Бюджет дня не в формате '~Xh РП / ~Yh физ'")
+# issue #328: русская 'ч' — стандартный формат formatting.md, латинская 'h' — старый
+# формат, оставлена для обратной совместимости с уже существующими артефактами.
+if ! grep -qE "~[0-9]+\.?[0-9]* ?[hч] РП" "$DAYPLAN"; then
+  ERRORS+=("Бюджет дня не в формате '~Xч РП / ~Yч физ' (латинская 'h' тоже принимается)")
 fi
 
 # --- Ф3 Check 5: Carry-over цитата (если есть предыдущий DayPlan) ---

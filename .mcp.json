@@ -7,7 +7,7 @@
     },
 
     "ext-railway": {
-      "command": "/home/tseren/.secrets/mcp-railway.sh",
+      "command": "{{HOME_DIR}}/.secrets/mcp-railway.sh",
       "args": []
     }
 

@@ -210,11 +210,50 @@ fi
 # two blocking gates; its own upstream CI is responsible for content checks.
 HARDCODE_SCAN_INCLUDES=(--include="*.md" --include="*.sh" --include="*.json" --include="*.plist" --exclude-dir="guide-kit")
 
-# 2. Нет захардкоженных /Users/ путей [pristine only]
+# Staged-режим для чеков 2/3: сканировать только staged-содержимое перечисленных
+# в STAGED_FILES файлов (git show ":$f"), не весь $TEMPLATE_DIR — то же исправление,
+# что уже применено к чеку 1 выше (issue #330: staged заявлял "checks ONLY staged
+# files" в своём --help, но фактически сканировал весь репозиторий).
+# Печатает совпадение-count в stdout, построчные hits — в файл $3.
+hardcode_scan_staged() {
+    local pattern="$1" exclude_re="$2" hits_file="$3"
+    local f file_hits count=0
+    : > "$hits_file"
+    while IFS= read -r f; do
+        case "$f" in
+            */validate-template.sh|validate-template.sh|*/setup.sh|setup.sh|CHANGELOG.md) continue ;;
+        esac
+        case "$f" in
+            *.md|*.sh|*.json|*.plist) ;;
+            *) continue ;;
+        esac
+        case "$f" in guide-kit/*) continue ;; esac
+        file_hits=$(cd "$TEMPLATE_DIR" && git show ":$f" 2>/dev/null | grep -n "$pattern" \
+            | { [ -n "$exclude_re" ] && grep -vE "$exclude_re" || cat; } || true)
+        if [ -n "$file_hits" ]; then
+            count=$((count + $(echo "$file_hits" | wc -l | tr -d ' ')))
+            { echo "${f}:"; echo "$file_hits"; } >> "$hits_file"
+        fi
+    done <<< "$STAGED_FILES"
+    echo "$count"
+}
+
+# 2. Нет захардкоженных /Users/ путей [pristine + staged; skip только installed]
 # В installed-режиме setup.sh легитимно подставил $WORKSPACE_DIR → /Users/<user>/...
 echo -n "[2/5] Hardcoded /Users/ paths... "
 if [ "$MODE" = "installed" ]; then
     echo "SKIP (installed mode — /Users/ подставлен setup'ом)"
+elif [ "$MODE" = "staged" ]; then
+    TMPDIR_CHECK2_HITS_FILE="$(mktemp)"
+    count=$(hardcode_scan_staged '/Users/' '/Users/\.\.\./|# .*(/Users/|e\.g\.)' "$TMPDIR_CHECK2_HITS_FILE")
+    if [ "$count" -gt 0 ]; then
+        echo "FAIL ($count hits)"
+        head -3 "$TMPDIR_CHECK2_HITS_FILE" || true
+        FAIL=1
+    else
+        echo "PASS"
+    fi
+    rm -f "$TMPDIR_CHECK2_HITS_FILE"
 else
     count=$(grep -rn '/Users/' "$TEMPLATE_DIR" "${HARDCODE_SCAN_INCLUDES[@]}" \
             --exclude='validate-template.sh' --exclude='setup.sh' \
@@ -235,11 +274,22 @@ else
     fi
 fi
 
-# 3. Нет захардкоженных /opt/homebrew путей [pristine only]
+# 3. Нет захардкоженных /opt/homebrew путей [pristine + staged; skip только installed]
 # В installed-режиме CLAUDE_PATH=/opt/homebrew/bin/claude — легитимная подстановка.
 echo -n "[3/5] Hardcoded /opt/homebrew paths... "
 if [ "$MODE" = "installed" ]; then
     echo "SKIP (installed mode — CLAUDE_PATH может быть /opt/homebrew/...)"
+elif [ "$MODE" = "staged" ]; then
+    TMPDIR_CHECK3_HITS_FILE="$(mktemp)"
+    count=$(hardcode_scan_staged '/opt/homebrew' 'README\.md|PLATFORM-COMPAT\.md|validate-template\.yml|/usr/local/bin.*:/opt/homebrew' "$TMPDIR_CHECK3_HITS_FILE")
+    if [ "$count" -gt 0 ]; then
+        echo "FAIL ($count hits)"
+        head -3 "$TMPDIR_CHECK3_HITS_FILE" || true
+        FAIL=1
+    else
+        echo "PASS"
+    fi
+    rm -f "$TMPDIR_CHECK3_HITS_FILE"
 else
     count=$(grep -rn '/opt/homebrew' "$TEMPLATE_DIR" "${HARDCODE_SCAN_INCLUDES[@]}" \
             --exclude='validate-template.sh' --exclude='setup.sh' \

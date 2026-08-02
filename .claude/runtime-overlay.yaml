@@ -56,7 +56,10 @@ substituted:
 
 # === COPIED_TO_WORKSPACE: FMT → $WORKSPACE_DIR/<path> (без substitution) ===
 # Файлы, которые скрипты ищут в $WORKSPACE_DIR/ (BUG-1 fix). Без substitution
-# просто копируются. При update.sh — переcопируются если изменились в FMT.
+# просто копируются. При update.sh — пересопируются если изменились в FMT,
+# КРОМЕ файлов из is_protected_user_file() (build-runtime.sh) — те сеются
+# только при отсутствии, существующая пользовательская копия не трогается
+# (issue #327: params.yaml затирался при каждом update.sh).
 copied_to_workspace:
   - .claude/sync-manifest.yaml
   - params.yaml
