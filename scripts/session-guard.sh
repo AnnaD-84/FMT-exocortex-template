@@ -26,8 +26,8 @@
 set -euo pipefail
 
 IWE_ROOT="${IWE_ROOT:-$HOME/IWE}"
-# issue #266: a hardcoded personal governance-repo name broke every template
-# user whose repo is named differently (the shipped default — see create-wp.sh).
+# issue #266: hardcoded "DS-strategy" broke every template user whose
+# governance repo is named "DS-strategy" (the shipped default — see create-wp.sh).
 GOV_REPO="${IWE_GOVERNANCE_REPO:-DS-strategy}"
 SESSION_DIR="$IWE_ROOT/.iwe-runtime/sessions"
 OPEN_LOG="$IWE_ROOT/$GOV_REPO/inbox/open-sessions.log"
@@ -41,6 +41,7 @@ shift || true
 # --- helpers ---
 now_iso() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 now_date() { date +"%Y-%m-%d"; }
+now_month() { date +"%Y-%m"; }
 fail() { echo "session-guard: $1" >&2; exit "${2:-1}"; }
 orz_agent_name() {
   case "$1" in
@@ -190,13 +191,39 @@ if [ "$CMD" = "open" ]; then
   while IFS= read -r STALE; do
     [ -z "$STALE" ] && continue
     [ -f "$STALE" ] || continue
-    # GNU stat first: `stat -f %m` on GNU coreutils means --file-system mode
-    # (ignores %m as an mtime format, prints a multi-line filesystem report
-    # instead) — it exits 0 with garbage, so a BSD-first `||` order never
-    # falls through to the working branch on Linux (found 2026-07-25).
-    STALE_MTIME=$(stat -c %Y "$STALE" 2>/dev/null || stat -f %m "$STALE" 2>/dev/null || echo "")
-    [ -z "$STALE_MTIME" ] && continue
-    STALE_AGE=$(( $(date +%s) - STALE_MTIME ))
+    # Age by `opened_at:` (when the session actually started), not mtime —
+    # WP-484 Нить1 (peer-session 2026-07-31-14-wp484-session-close-discipline):
+    # any unrelated append (note-file, a stray write into the wrong semaphore)
+    # bumps mtime and resets the TTL clock, which is exactly how a truly
+    # abandoned semaphore (WP-507, 30.07) survived auto-orphan for 4.5h while
+    # collecting other sessions' files. Falls back to created_at, then to a
+    # loud WARN (no more silent mtime fallback — see WP-484 Ф31 below).
+    STALE_OPENED_AT=$(grep "^opened_at: " "$STALE" | cut -d' ' -f2- || true)
+    STALE_EPOCH=""
+    if [ -n "$STALE_OPENED_AT" ]; then
+      STALE_EPOCH=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$STALE_OPENED_AT" +%s 2>/dev/null \
+        || date -u -d "$STALE_OPENED_AT" +%s 2>/dev/null || echo "")
+    fi
+    # Fallback to mtime is REMOVED to prevent WP-507-style orphan resurrection
+    # (append-operations updating mtime restart the TTL clock).
+    # If opened_at failed, try created_at (immutable backup added in WP-484 Ф31).
+    if [ -z "$STALE_EPOCH" ]; then
+      STALE_CREATED_AT=$(grep "^created_at: " "$STALE" | cut -d' ' -f2- || true)
+      if [ -n "$STALE_CREATED_AT" ]; then
+        STALE_EPOCH=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$STALE_CREATED_AT" +%s 2>/dev/null \
+          || date -u -d "$STALE_CREATED_AT" +%s 2>/dev/null || echo "")
+      fi
+    fi
+    # Neither timestamp present/parseable (pre-WP-484 semaphore, or corrupt
+    # file): this semaphore can NEVER be auto-orphaned now that mtime fallback
+    # is gone. Independent code review (01.08) flagged the silent version of
+    # this as a scope-gate weakening risk — loud WARN so it surfaces in `audit`
+    # and in whatever log captures open's stderr, instead of vanishing.
+    if [ -z "$STALE_EPOCH" ]; then
+      echo "WARNING: semaphore ($(basename "$STALE")) has no opened_at/created_at — cannot auto-orphan, needs manual cleanup or 'audit' review" >&2
+      continue
+    fi
+    STALE_AGE=$(( $(date +%s) - STALE_EPOCH ))
     if [ "$STALE_AGE" -gt 1800 ]; then
       STALE_WP=$(grep "^wp: " "$STALE" | cut -d' ' -f2- || echo "unknown")
       mv "$STALE" "${STALE}.orphaned-${STALE_WP}"
@@ -206,8 +233,16 @@ if [ "$CMD" = "open" ]; then
 
   SESSION_ID="${IWE_SESSION_ID:-$(date +%s)}"
   SEM_FILE="$SESSION_DIR/${AGENT}-${SESSION_ID}.open"
-  ORZ_BASENAME="$(now_date)-${SLUG:-$WP}.md"
+  # WP-484 (31.07, data-pipeline-audit-2026-07-30.md §3.3): a caller-supplied slug
+  # sometimes already carries today's date (Kimi free-text `--slug`, human habit) —
+  # confirmed live on real files, e.g. sessions/2026-07/2026-07-31-2026-07-31-wp510-*.md.
+  # This is the ONE place that assembles the path, so it's the one place that can
+  # enforce "date appears exactly once" regardless of what any caller passes.
+  CLEAN_SLUG="${SLUG:-$WP}"
+  CLEAN_SLUG="${CLEAN_SLUG#"$(now_date)"-}"
+  ORZ_BASENAME="$(now_month)/$(now_date)-${CLEAN_SLUG}.md"
   ORZ_FILE="$ORZ_DIR/$ORZ_BASENAME"
+  mkdir -p "$(dirname "$ORZ_FILE")"
   {
     echo "---"
     echo "agent: $AGENT"
@@ -215,6 +250,7 @@ if [ "$CMD" = "open" ]; then
     echo "task: ${TASK:-}"
     echo "slug: ${SLUG:-$WP}"
     echo "opened_at: $(now_iso)"
+    echo "created_at: $(now_iso)"
     echo "session_id: $SESSION_ID"
     echo "orz_file: $ORZ_BASENAME"
     echo "---"
@@ -226,6 +262,16 @@ if [ "$CMD" = "open" ]; then
         [ -n "$init_file" ] && echo "file: $init_file"
       done
     fi
+    # Ф32 п.5 (WP-484, 31.07): `open` creates the ORZ scaffold itself below — its
+    # first commit is a brand-new git path (status A), which the scope gate never
+    # mtime-bypasses. Without this line every session's OWN report needed a
+    # separate `note-file` call just to survive the gate it forgot about — live-
+    # reproduced (mktemp sandbox: open → edit ORZ → git add → pre-commit-check
+    # → BLOCK) and matches orphaned untracked ORZ files found sitting in this
+    # session's own `git status` from a prior, unrelated WP. Path is relative to
+    # $ORZ_DIR's PARENT (governance-repo root — sessions/<...>), same convention
+    # every other `file:` line already uses.
+    echo "file: $(basename "$ORZ_DIR")/$ORZ_BASENAME"
   } > "$SEM_FILE"
   # Pointer to active semaphore for PostToolUse hooks
   PTR_FILE="$SESSION_DIR/current-${AGENT}.ptr"
@@ -313,7 +359,7 @@ validate_orz() {
 
   # 5. git tracked
   local rel
-  rel="$(basename "$orz")"
+  rel="$(python3 -c "import os,sys; print(os.path.relpath(sys.argv[2], sys.argv[3]))" -- "$orz" "$ORZ_DIR")"
   if ! git -C "$ORZ_DIR" ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
     echo "  ❌ ORZ-файл не добавлен в git index (git add $rel)" >&2
     errors=$((errors + 1))
@@ -351,13 +397,30 @@ if [ "$CMD" = "close" ]; then
   if [ -z "$ORZ_BASENAME" ]; then
     # Fallback для старых семафоров без поля orz_file
     OPENED_DATE=$(grep "^opened_at: " "$SEM_FILE" | cut -d' ' -f2- | cut -dT -f1 || true)
-    ORZ_BASENAME="${OPENED_DATE:-$(now_date)}-${SLUG:-$WP}.md"
+    OPENED_DATE="${OPENED_DATE:-$(now_date)}"
+    ORZ_BASENAME="${OPENED_DATE:0:7}/${OPENED_DATE}-${SLUG:-$WP}.md"
   fi
   ORZ_FILE="$ORZ_DIR/$ORZ_BASENAME"
 
   echo "Session CLOSE: проверяю ORZ $ORZ_FILE ..."
   if ! validate_orz "$ORZ_FILE" "$AGENT"; then
     fail "ORZ не прошёл валидацию. Исправь замечания выше и повтори close. Семафор остаётся активным." 5
+  fi
+
+  # Quick Close — не текстовая декларация: именно терминальная карточка раннера
+  # доказывает, что эта сессия прошла обязательный процесс. Сопоставление по slug
+  # не даёт чужой параллельной карточке закрыть текущую сессию.
+  RUNNER_CARD="$IWE_ROOT/$GOV_REPO/inbox/agent/tasks/RUN-quick-close-${SLUG}"'*.md'
+  RUNNER_OK=""
+  for card in $RUNNER_CARD; do
+    [ -f "$card" ] || continue
+    grep -q '^process_id: quick-close$' "$card" || continue
+    grep -q '^status: completed$' "$card" || continue
+    RUNNER_OK="$card"
+    break
+  done
+  if [ -z "$RUNNER_OK" ]; then
+    fail "Quick Close не завершён для slug '$SLUG': нет terminal RUN-quick-close-${SLUG}*.md. Сначала запусти process-runner.py start quick-close с тем же --slug." 7
   fi
 
   # agent status idle
@@ -428,6 +491,33 @@ print(os.path.relpath(f, r))
     REL_PATH="$FILE_PATH"
   fi
   [ -n "$REL_PATH" ] || fail "note-file: cannot determine relative path for '$FILE_PATH'" 1
+  # A noted path only protects a commit if it byte-matches what `git diff --cached`
+  # reports later (repo-relative, no repo-name prefix). A repo-name-prefixed path
+  # silently recorded here is bug-2026-07-31-runner-commit-push-stale-retry (gate
+  # keeps blocking after an honest-looking registration). Future files (noted
+  # BEFORE creation — day-close-mechanical pre-notes archive dest, sessions note
+  # files they are about to Write) are legitimate: record verbatim, warn loudly.
+  path_known_to_repo() {
+    [ -e "$1/$2" ] && return 0
+    git -C "$1" ls-files --cached --error-unmatch -- "$2" >/dev/null 2>&1 && return 0
+    git -C "$1" cat-file -e "HEAD:$2" 2>/dev/null && return 0
+    return 1
+  }
+  if [ -n "$REPO_ROOT" ] && ! path_known_to_repo "$REPO_ROOT" "$REL_PATH"; then
+    REPO_NAME=$(basename "$REPO_ROOT")
+    STRIPPED="${REL_PATH#"$REPO_NAME"/}"
+    if [ "$STRIPPED" != "$REL_PATH" ] && path_known_to_repo "$REPO_ROOT" "$STRIPPED"; then
+      echo "note-file: путь '$REL_PATH' нормализован до репо-относительного '$STRIPPED' (префикс имени репозитория отброшен)" >&2
+      REL_PATH="$STRIPPED"
+    elif [ "$STRIPPED" != "$REL_PATH" ]; then
+      # Prefix textually matches the repo name but neither form exists yet —
+      # overwhelmingly the prefix mistake, not a self-named future subdir.
+      echo "note-file: WARNING — '$REL_PATH' начинается с имени репозитория '$REPO_NAME/'; записываю без префикса как '$STRIPPED' (scope gate сравнивает репо-относительные пути)" >&2
+      REL_PATH="$STRIPPED"
+    else
+      echo "note-file: WARNING — '$REL_PATH' пока не существует в репо '$REPO_NAME' (ни на диске, ни в индексе, ни в HEAD); записан как будущий файл. Если это опечатка — scope gate не пропустит staged-файл." >&2
+    fi
+  fi
   # Avoid duplicate consecutive entries
   LAST=$(tail -1 "$SEM_FILE" 2>/dev/null || true)
   if [ "$LAST" != "file: $REL_PATH" ]; then
@@ -462,7 +552,7 @@ if [ "$CMD" = "audit" ]; then
         wp=$3; gsub(/\|/,"",wp); print $1, wp
       }
     ' "$OPEN_LOG" | sort -u | while read -r dt wp; do
-      ORZ=$(ls "$ORZ_DIR/$dt"-*"$wp"*.md 2>/dev/null | head -1 || true)
+      ORZ=$(ls "$ORZ_DIR/${dt:0:7}/$dt"-*"$wp"*.md 2>/dev/null | head -1 || true)
       if [ -z "$ORZ" ]; then
         echo "  $dt | $wp | ORZ отсутствует"
       fi
@@ -472,7 +562,7 @@ if [ "$CMD" = "audit" ]; then
 
   # 3. ORZ-файлы с невалидным frontmatter/секциями
   echo "ORZ-файлы с дефектами (после $SINCE):"
-  find "$ORZ_DIR" -maxdepth 1 -name '*.md' -type f ! -name '00-index.md' -newermt "$SINCE" 2>/dev/null | while read -r orz; do
+  find "$ORZ_DIR" -maxdepth 2 -mindepth 2 -name '*.md' -type f ! -name '00-index.md' -newermt "$SINCE" 2>/dev/null | while read -r orz; do
     tmp_errors=$(mktemp)
     orz_agent=$(grep -E "^agent:" "$orz" | sed 's/^agent: *//' | head -1 || true)
     if ! validate_orz "$orz" "${orz_agent:-unknown}" >"$tmp_errors" 2>&1 && [ -s "$tmp_errors" ]; then
@@ -506,7 +596,7 @@ if [ "$CMD" = "pre-commit-check" ]; then
 🚫 SESSION-GUARD: коммит заблокирован.
 
 Сессия не открыта по протоколу. Перед работой с файлами:
-  bash ~/IWE/scripts/session-guard.sh open --wp WP-N --task "..."
+  bash {{WORKSPACE_DIR}}/scripts/session-guard.sh open --wp WP-N --task "..."
 
 Или, если это emergency-фикс без РП:
   GIT_OPTIONAL_LOCKS=0 git commit --no-verify -m "..."
@@ -596,7 +686,7 @@ EOF
     echo "" >&2
     echo "Scope gate: staged-файлы вне текущих сессий." >&2
     echo "Если файл относится к сессии, добавь его вручную:" >&2
-    echo "  bash ~/IWE/scripts/session-guard.sh note-file <path>" >&2
+    echo "  bash {{WORKSPACE_DIR}}/scripts/session-guard.sh note-file <path>" >&2
     echo "Или убери из staged:" >&2
     echo "  git restore --staged <file>" >&2
     # Emit AR.216 warn to rule-engine session warn log

@@ -191,7 +191,10 @@ OUT_FILE="$TMP_ROOT/codex-output.txt"
 # first --add-dir (FILTERED_DIRS[1] — [0] is the literal "--add-dir" token).
 PRIMARY_DIR="${FILTERED_DIRS[1]:-$PWD}"
 
-CODEX_EXEC_ARGS=(exec -s workspace-write -C "$PRIMARY_DIR" -o "$OUT_FILE")
+# --skip-git-repo-check: PRIMARY_DIR is the PII-filtered temp copy (mktemp -d
+# above), never a git worktree — codex exec otherwise refuses with
+# "Not inside a trusted directory" and the adapter reports it as empty output.
+CODEX_EXEC_ARGS=(exec -s workspace-write -C "$PRIMARY_DIR" --skip-git-repo-check -o "$OUT_FILE")
 # Start at 3, not 1: FILTERED_DIRS[0..1] is the pair already consumed as
 # PRIMARY_DIR above — re-adding it as --add-dir would just be a harmless-but-
 # redundant duplicate, skip it.

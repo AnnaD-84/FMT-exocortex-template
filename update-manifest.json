@@ -1,5 +1,5 @@
 {
-  "version": "0.36.2",
+  "version": "0.36.3",
   "description": "Манифест платформенных файлов FMT-exocortex-template. Используется update.sh для доставки обновлений.",
   "files": [
     {
@@ -1413,6 +1413,9 @@
       "path": "scripts/headless-runner.sh"
     },
     {
+      "path": "scripts/hermes-peer-adapter.sh"
+    },
+    {
       "path": "scripts/hindsight_adapter.py"
     },
     {
@@ -1525,6 +1528,9 @@
     },
     {
       "path": "scripts/peer-adapter-filter.py"
+    },
+    {
+      "path": "scripts/peer-session-finalize.sh"
     },
     {
       "path": "scripts/pending-phases-sweep.sh"
