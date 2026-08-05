@@ -609,8 +609,14 @@ render_iwe_status() {
   # WP-5 Ubuntu-audit факт #4: launchctl unconditionally also meant Linux always saw this
   # as false (launchctl doesn't exist there) — iwe_scheduler_active() (lib/common.sh)
   # branches launchd/systemd by what's actually on PATH.
+  # issue #347: the old boolean called this "has_launchd_unit" even though the check
+  # covers launchd, systemd, crontab and log evidence — and it could not tell
+  # "never deployed here" from "deployed and dead", so an install that simply never
+  # set up a scheduler got a red Mode A plus a fresh incident file every morning.
+  local scheduler_state
+  scheduler_state="$(iwe_scheduler_state)"
   local has_launchd_unit=false
-  if iwe_scheduler_active; then
+  if [ "$scheduler_state" = "active" ]; then
     has_launchd_unit=true
   fi
 
@@ -625,6 +631,15 @@ render_iwe_status() {
   if [ -f "$triage_file" ] || [ -f "$watchdog_log" ] || [ -f "$feedback_triage_log" ]; then
     # Mode B-1: отчёт/лог за сегодня есть → норм
     echo "| Scheduler/триаж | 🟢 | отчёт/лог за $DATE присутствует (Mode B норм) |"
+  elif [ "$scheduler_state" = "not_deployed" ]; then
+    # issue #347: планировщик здесь никогда не разворачивали — нет ни юнита, ни
+    # crontab-записи, ни единого лога за всю историю. Это не авария, а не-установка:
+    # ⚪ без инцидента. Настоящий Mode A остаётся ниже, под deployed_inactive.
+    echo "| Scheduler/триаж | ⚪ | планировщик не развёрнут на этой машине (ни юнита, ни crontab, ни логов) — установка: см. roles/ROLE-CONTRACT.md |"
+  elif [ "$scheduler_state" = "unknown" ]; then
+    # Проверить не удалось (нет пользовательской шины systemd в WSL/контейнере и т.п.).
+    # «Не смог проверить» не красится ни в зелёный, ни в красный и не рождает инцидент.
+    echo "| Scheduler/триаж | 🟡 | проверить состояние планировщика не удалось (запрос к менеджеру служб завершился ошибкой) — статус неизвестен |"
   elif [ "$has_launchd_unit" = "true" ] && [ "$in_grace_window" = "true" ]; then
     # Mode C: юнит загружен, но cron ещё не сработал (до 06:30)
     echo "| Scheduler/триаж | 🟡 | Mode C: юнит загружен, ожидание cron (06:00) — grace window до 06:30 |"
@@ -661,7 +676,27 @@ render_iwe_status() {
     elif [ -n "$last_watchdog_log" ]; then
       last_log_age_days=$(( ( $(date +%s) - $(stat -f %m "$last_watchdog_log" 2>/dev/null || stat -c %Y "$last_watchdog_log" 2>/dev/null || echo 0) ) / 86400 ))
     fi
-    echo "| Scheduler/триаж | 🔴 | **Mode A** (cron не отработал): юнит feedback-triage не зарегистрирован в launchctl, последний лог ${last_log_age_days}д назад |"
+    # issue #347: строка светофора не называла способ подавления — пользователь узнавал
+    # о маркере, только читая исходник этого скрипта.
+    # Абсолютный путь, а не относительный: проверяется абсолютный (см. incident_suppress
+    # ниже), и маркер, созданный из другого каталога, лёг бы мимо — подавление не
+    # сработало бы, а инцидент продолжал появляться каждое утро.
+    local suppress_path="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/.incident-suppress-scheduler-cron-not-fired"
+    echo "| Scheduler/триаж | 🔴 | **Mode A** (планировщик разворачивали, но он не отрабатывает): последний лог ${last_log_age_days}д назад · подавить повтор: \`touch $suppress_path\` |"
+
+    # issue #347: инцидент советовал macOS-инструменты на любой ОС. Ветку выбираем по
+    # тому, какой менеджер служб реально есть на машине.
+    local launcher_hint unit_hint
+    if command -v launchctl >/dev/null 2>&1; then
+      launcher_hint="launchctl"
+      unit_hint="~/Library/LaunchAgents/ (plist-файлы com.exocortex.*, com.strategist.*, com.extractor.*)"
+    elif command -v systemctl >/dev/null 2>&1; then
+      launcher_hint="systemctl --user"
+      unit_hint="~/.config/systemd/user/ (таймеры iwe-*.timer; проверка — systemctl --user list-timers)"
+    else
+      launcher_hint="crontab"
+      unit_hint="crontab -l (записи scheduler.sh / iwe-*)"
+    fi
 
     # Auto-create incident-файл если ещё нет за сегодня И не подавлен явно (issue
     # #292: имя файла содержит дату — [ ! -f incident_file ] никогда не срабатывало
@@ -691,13 +726,14 @@ auto_generated: true
 
 ## Симптом (auto-detected)
 
-- launchctl: ни один из юнитов \`com.exocortex.scheduler\`, \`com.strategist.morning\`, \`com.strategist.weekreview\`, \`com.extractor.inbox-check\` не зарегистрирован
+- $launcher_hint: ни один юнит планировщика не зарегистрирован и не активен
+- Признаки прошлого разворачивания на этой машине есть — иначе строка была бы ⚪ «не развёрнут», а этот файл не создавался бы (issue #347)
 - Последний лог \`~/logs/synchronizer/feedback-watchdog-*.log\` старше 24ч (или отсутствует)
 - Mode A классификация (см. peer-сессия 2026-05-30-07 §Gap 3)
 
 ## Action items
 
-1. Проверить \`~/Library/LaunchAgents/\` на наличие plist
+1. Проверить $unit_hint
 2. Переустановить роли: \`bash setup.sh\` (секция [5/6]) — либо вручную по \`roles/ROLE-CONTRACT.md\`
 3. Запустить руками: \`bash \${IWE_SCRIPTS:-$IWE/FMT-exocortex-template/scripts}/../roles/synchronizer/scripts/scheduler.sh --dry-run\` (legacy-скрипт, актуален только если ваша инсталляция ещё не мигрировала на per-role юниты)
 
@@ -707,7 +743,7 @@ auto_generated: true
 
 Если решено отложить fix и не получать новый инцидент-файл каждый день — создайте маркер:
 \`\`\`bash
-touch "\${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/.incident-suppress-scheduler-cron-not-fired"
+touch "$incident_suppress"
 \`\`\`
 Удалите маркер, чтобы возобновить авто-создание.
 INCEOF
@@ -978,7 +1014,10 @@ render_yesterday() {
   # у пользователей шаблона без своего extension-файла просто не будет.
   if [ -x "$IWE/extensions/day-open.summary-extra.sh" ]; then
     local extra_summary
-    extra_summary=$("$IWE/extensions/day-open.summary-extra.sh" "$YDAY" 2>/dev/null)
+    if ! extra_summary=$("$IWE/extensions/day-open.summary-extra.sh" "$YDAY"); then
+      echo "day-open: extension day-open.summary-extra.sh failed; continuing without its output" >&2
+      extra_summary=""
+    fi
     [ -n "$extra_summary" ] && { echo "$extra_summary"; echo; }
   fi
   # Sessions consolidation (DAP1-B/1-C, WP-7): включить РП сессий вчерашнего дня
@@ -1043,7 +1082,18 @@ render_compact_dashboard() {
   # WP-5 Ubuntu-audit факт #4: this used the same pre-#261 legacy label regex as
   # the OTHER launchctl check in this file (fixed above) — AND was unconditional
   # launchctl, so Linux always read 🔴 regardless of the actual systemd timers.
-  echo "  Scheduler: $(iwe_scheduler_active && echo '🟢' || echo '🔴 не запущен')"
+  # issue #347: this line used to collapse every non-active result into 🔴, including
+  # "never deployed here" and "the check itself failed" — the same conflation the
+  # traffic-light row above carried. Both call sites now read the same four states.
+  local short_state short_label
+  short_state="$(iwe_scheduler_state)"
+  case "$short_state" in
+    active)            short_label="🟢" ;;
+    deployed_inactive) short_label="🔴 не запущен" ;;
+    not_deployed)      short_label="⚪ не развёрнут на этой машине" ;;
+    *)                 short_label="🟡 состояние неизвестно" ;;
+  esac
+  echo "  Scheduler: $short_label"
   local fpf_status fpf_fetch_ok
   # issue #241 (остаточная дыра): та же незащищённая git fetch, тот же класс зависания.
   # run_bounded не пробрасывает exit-код — результат передаём через маркер в stdout.

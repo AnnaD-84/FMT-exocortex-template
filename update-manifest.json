@@ -3,6 +3,9 @@
   "description": "Манифест платформенных файлов FMT-exocortex-template. Используется update.sh для доставки обновлений.",
   "files": [
     {
+      "path": ".agentigore"
+    },
+    {
       "path": ".claude/agents/wp-sync-actualizer.md"
     },
     {
@@ -22,6 +25,9 @@
     },
     {
       "path": ".claude/detectors/detector_pattern_awareness.sh"
+    },
+    {
+      "path": ".claude/hooks/.orphan-allowlist"
     },
     {
       "path": ".claude/hooks/agent-trace-recorder.sh"
@@ -1305,6 +1311,9 @@
       "path": "scripts/check-open-sessions.sh"
     },
     {
+      "path": "scripts/check-orphan-hooks.sh"
+    },
+    {
       "path": "scripts/check-platform-compat.sh"
     },
     {
@@ -1551,6 +1560,9 @@
       "path": "scripts/route-task.sh"
     },
     {
+      "path": "scripts/run-regression-tests.sh"
+    },
+    {
       "path": "scripts/script-promote.sh"
     },
     {
@@ -1603,6 +1615,51 @@
     },
     {
       "path": "scripts/test-route-task.sh"
+    },
+    {
+      "path": "scripts/tests/lib/capture_fixture.sh"
+    },
+    {
+      "path": "scripts/tests/lib/seed_strategy_fixture.sh"
+    },
+    {
+      "path": "scripts/tests/test_capture_bus_contract.sh"
+    },
+    {
+      "path": "scripts/tests/test_capture_bus_detector_timeout.sh"
+    },
+    {
+      "path": "scripts/tests/test_create_wp_contract.sh"
+    },
+    {
+      "path": "scripts/tests/test_create_wp_registry_coherence.sh"
+    },
+    {
+      "path": "scripts/tests/test_create_wp_repeat_and_cwd.sh"
+    },
+    {
+      "path": "scripts/tests/test_critical_alert_contract.sh"
+    },
+    {
+      "path": "scripts/tests/test_critical_alert_disabled_tracker.sh"
+    },
+    {
+      "path": "scripts/tests/test_critical_alert_failure_matrix.sh"
+    },
+    {
+      "path": "scripts/tests/test_day_close_lock_timezone.sh"
+    },
+    {
+      "path": "scripts/tests/test_fresh_seed_reproduction.sh"
+    },
+    {
+      "path": "scripts/tests/test_hook_classification.sh"
+    },
+    {
+      "path": "scripts/tests/test_upgrade_worktree_cleanup.sh"
+    },
+    {
+      "path": "scripts/tests/validate_manifest_coverage.sh"
     },
     {
       "path": "scripts/update-derived-snapshot.py"
@@ -1660,30 +1717,6 @@
     },
     {
       "path": "update.sh"
-    },
-    {
-      "path": "scripts/tests/test_create_wp_registry_coherence.sh"
-    },
-    {
-      "path": "scripts/tests/test_capture_bus_detector_timeout.sh"
-    },
-    {
-      "path": "scripts/tests/test_critical_alert_disabled_tracker.sh"
-    },
-    {
-      "path": "scripts/run-regression-tests.sh"
-    },
-    {
-      "path": "scripts/tests/test_create_wp_contract.sh"
-    },
-    {
-      "path": "scripts/tests/test_capture_bus_contract.sh"
-    },
-    {
-      "path": "scripts/tests/test_critical_alert_contract.sh"
-    },
-    {
-      "path": "scripts/tests/validate_manifest_coverage.sh"
     }
   ],
   "excluded_paths": [
@@ -1708,6 +1741,7 @@
     "scripts/session-dispatcher-tsekh.py",
     "scripts/tests/conftest.py",
     "scripts/tests/test_agent_dashboard.py",
+    "scripts/tests/test_check_orphan_hooks.sh",
     "scripts/tests/test_copy_to_aisystant.py",
     "scripts/tests/test_create_wp_number_padding.py",
     "scripts/tests/test_create_wp_weekplan_writer.py",

@@ -6,13 +6,18 @@
 # Mechanical enforcement: git pre-commit hook проверяет наличие активного семафора.
 #
 # Команды:
-#   open --wp WP-N [--task "..."] [--files "a,b"] [--slug "..."] [--agent claude-code|kimi|hermes]
+#   open --wp WP-N [--task "..."] [--files "a,b"] [--slug "..."] [--agent claude-code|kimi|hermes] [--personality <unassigned|UUID>]
 #   open --housekeeping <reason> [--agent ...]        # фоновая housekeeping-сессия без ORZ
 #   close [--wp WP-N] [--slug "..."] [--agent ...]
 #   close --housekeeping <reason> [--agent ...]       # закрыть housekeeping-сессию
-#   audit [--since YYYY-MM-DD]
+#   audit [--since YYYY-MM-DD] [--cleanup-orphans]
+#   renew [--wp WP-N] [--slug "..."] [--agent ...]    # продлить право на коммит
 #   pre-commit-check
 #   note-file <path> [--agent ...]
+#
+# Аренда (WP-484 Ф49): существование сессии и её право разрешать коммит — разные
+# вещи. Возраст отзывает только право (по умолчанию 4h, `IWE_SESSION_LEASE_SEC`);
+# существование снимает лишь close или доказанная смерть процесса-владельца.
 #
 # Exit codes:
 #   0 — OK
@@ -43,6 +48,91 @@ now_iso() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 now_date() { date +"%Y-%m-%d"; }
 now_month() { date +"%Y-%m"; }
 fail() { echo "session-guard: $1" >&2; exit "${2:-1}"; }
+
+semaphore_epoch() {
+  local semaphore="$1" timestamp=""
+  timestamp=$(grep -E '^(opened_at|created_at): ' "$semaphore" | head -1 | cut -d' ' -f2- || true)
+  [ -n "$timestamp" ] || return 1
+  date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$timestamp" +%s 2>/dev/null \
+    || date -u -d "$timestamp" +%s 2>/dev/null
+}
+
+# --- Lease: право семафора разрешать коммит (WP-484 Ф49, 04.08, пир-сессия с Codex) ---
+#
+# Семафор несёт две РАЗНЫЕ функции, которые до сих пор были склеены в одном
+# состоянии `.open`:
+#   А — «сессия существует, не трогай её»;
+#   Б — «файлы этой сессии разрешены к коммиту» (scope gate ниже).
+# WP-507 (30.07) — брошенный семафор 4.5h раздавал функцию Б чужим файлам.
+# Лечили это авто-карантином по возрасту в `open`, но он отнимает функцию А:
+# любая сессия старше TTL уезжала в `.orphaned-*`, как только тот же агент
+# открывал вторую, и после этого не могла завершить Quick Close (`close`
+# выбирает только `*.open`). На диске 155 таких файлов против 293 закрытых
+# штатно. Разделение функций снимает конфликт: возраст отзывает только Б.
+#
+# Аренда живёт в ОТДЕЛЬНОМ файле `<semaphore>.lease`, а не строкой в семафоре:
+#   1. append в семафор двигает его mtime, а scope gate сравнивает mtime файлов
+#      с mtime семафора — продление аренды молча отзывало бы право у файлов,
+#      отредактированных до продления;
+#   2. повторные append дают неоднозначность «первая или последняя запись»
+#      (sweep_orphaned_semaphores выше читает `head -1`);
+#   3. имя файла аренды производно от имени семафора — привязка к конкретной
+#      сессии структурная, продлить чужую аренду «заодно» нельзя.
+LEASE_SEC="${IWE_SESSION_LEASE_SEC:-14400}"  # 4h; продление — `renew`
+
+lease_deadline_epoch() {
+  local semaphore="$1" base_epoch renewed_at renewed_epoch=""
+  base_epoch=$(semaphore_epoch "$semaphore") || return 1
+  if [ -f "${semaphore}.lease" ]; then
+    renewed_at=$(grep '^renewed_at: ' "${semaphore}.lease" | tail -1 | cut -d' ' -f2- || true)
+    if [ -n "$renewed_at" ]; then
+      renewed_epoch=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$renewed_at" +%s 2>/dev/null \
+        || date -u -d "$renewed_at" +%s 2>/dev/null || echo "")
+    fi
+  fi
+  if [ -n "$renewed_epoch" ] && [ "$renewed_epoch" -gt "$base_epoch" ]; then
+    base_epoch="$renewed_epoch"
+  fi
+  echo $(( base_epoch + LEASE_SEC ))
+}
+
+# Семафор без разбираемой метки времени (до-WP-484 или битый) НЕ получает
+# полномочий: именно этот случай независимое ревью 01.08 пометило как риск
+# ослабления scope gate, а авто-карантин его не покрывает by design.
+lease_valid() {
+  local semaphore="$1" deadline
+  deadline=$(lease_deadline_epoch "$semaphore") || return 1
+  [ "$(date +%s)" -lt "$deadline" ]
+}
+
+sweep_orphaned_semaphores() {
+  local semaphore pid age epoch quarantined=0 ambiguous=0
+  while IFS= read -r semaphore; do
+    [ -f "$semaphore" ] || continue
+    pid=$(grep '^pid: ' "$semaphore" | head -1 | cut -d' ' -f2- || true)
+    if [[ "$pid" =~ ^[0-9]+$ ]]; then
+      if ! kill -0 "$pid" 2>/dev/null; then
+        mv "$semaphore" "${semaphore}.orphaned-dead-pid"
+        echo "WARNING: orphaned semaphore $(basename "$semaphore") quarantined: pid $pid is dead" >&2
+        quarantined=$((quarantined + 1))
+      fi
+      continue
+    fi
+
+    epoch=$(semaphore_epoch "$semaphore" || true)
+    [ -n "$epoch" ] || {
+      echo "WARNING: semaphore $(basename "$semaphore") has no live pid or parseable timestamp; manual review required" >&2
+      ambiguous=$((ambiguous + 1))
+      continue
+    }
+    age=$(( $(date +%s) - epoch ))
+    if [ "$age" -gt 1800 ]; then
+      echo "WARNING: semaphore $(basename "$semaphore") is ${age}s old without pid proof; kept for manual review" >&2
+      ambiguous=$((ambiguous + 1))
+    fi
+  done < <(find "$SESSION_DIR" -name '*.open' -type f 2>/dev/null)
+  echo "Semaphore sweep: quarantined=$quarantined ambiguous=$ambiguous"
+}
 orz_agent_name() {
   case "$1" in
     kimi) echo "kimi-headless" ;;
@@ -62,11 +152,24 @@ orz_agent_name() {
 #   1 — no open semaphore at all for this agent
 #   2 — ambiguous or requested --wp/--slug matched nothing; candidate list
 #       already printed to stderr, caller should just propagate a failure
+list_candidates() { # list_candidates <agent> — one path per line, newest first
+  ls -t "$SESSION_DIR/${1}"-*.open 2>/dev/null || true
+}
+
+print_candidates() { # print_candidates <candidates> — human-readable list to stderr
+  local cand
+  while IFS= read -r cand; do
+    [ -z "$cand" ] && continue
+    echo "  $(basename "$cand")  wp=$(grep "^wp: " "$cand" | cut -d' ' -f2-)  slug=$(grep "^slug: " "$cand" | cut -d' ' -f2-)" >&2
+  done <<< "$1"
+}
+
 select_semaphore() {
   local agent="$1" want_wp="$2" want_slug="$3"
-  local candidates cand cand_wp cand_slug matched="" count
+  local candidates cand cand_wp cand_slug count
+  local matches=()
 
-  candidates=$(ls -t "$SESSION_DIR/${agent}"-*.open 2>/dev/null || true)
+  candidates=$(list_candidates "$agent")
   [ -z "$candidates" ] && return 1
 
   if [ -n "$want_wp" ] || [ -n "$want_slug" ]; then
@@ -76,14 +179,24 @@ select_semaphore() {
       cand_slug=$(grep "^slug: " "$cand" | cut -d' ' -f2- || true)
       if { [ -n "$want_wp" ] && [ "$cand_wp" = "$want_wp" ]; } || \
          { [ -n "$want_slug" ] && [ "$cand_slug" = "$want_slug" ]; }; then
-        matched="$cand"
-        break
+        matches+=("$cand")
       fi
     done <<< "$candidates"
 
-    if [ -n "$matched" ]; then
-      echo "$matched"
+    if [ "${#matches[@]}" -eq 1 ]; then
+      echo "${matches[0]}"
       return 0
+    fi
+
+    # WP-484 Ф49 (04.08, Codex): раньше здесь стоял `break` на первом совпадении,
+    # то есть при двух открытых сессиях одного РП выбиралась просто новейшая по
+    # mtime — и `close` закрывал не ту сессию, а `note-file` отдавал право на
+    # коммит чужой работе. Совпало несколько — это отказ, а не догадка: уточни
+    # --slug или --session-id.
+    if [ "${#matches[@]}" -gt 1 ]; then
+      echo "session-guard: под wp='$want_wp' slug='$want_slug' подходит несколько сессий агента '$agent' — уточни:" >&2
+      print_candidates "$(printf '%s\n' "${matches[@]}")"
+      return 2
     fi
 
     # Explicit --wp/--slug was given and matched nothing — never silently
@@ -92,12 +205,7 @@ select_semaphore() {
     # operator's own explicit (but mistyped/stale) --wp, defeating the
     # entire point of this fix.
     echo "session-guard: ни один открытый семафор агента '$agent' не совпал с wp='$want_wp' slug='$want_slug':" >&2
-    while IFS= read -r cand; do
-      [ -z "$cand" ] && continue
-      cand_wp=$(grep "^wp: " "$cand" | cut -d' ' -f2- || true)
-      cand_slug=$(grep "^slug: " "$cand" | cut -d' ' -f2- || true)
-      echo "  $(basename "$cand")  wp=$cand_wp  slug=$cand_slug" >&2
-    done <<< "$candidates"
+    print_candidates "$candidates"
     return 2
   fi
 
@@ -124,6 +232,9 @@ FILES=""
 SLUG=""
 AGENT="${IWE_AGENT:-}"
 HOUSEKEEPING=""
+PERSONALITY=""
+SESSION_ID_ARG=""
+CLEANUP_ORPHANS=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -133,7 +244,10 @@ while [[ $# -gt 0 ]]; do
     --slug|--topic) SLUG="$2"; shift 2 ;;
     --agent)  AGENT="$2"; shift 2 ;;
     --housekeeping) HOUSEKEEPING="$2"; shift 2 ;;
+    --personality) PERSONALITY="$2"; shift 2 ;;
+    --session-id) SESSION_ID_ARG="$2"; shift 2 ;;
     --since)  SINCE="$2"; shift 2 ;;
+    --cleanup-orphans) CLEANUP_ORPHANS=1; shift ;;
     --)       shift; POSITIONAL+=("$@"); break ;;
     -*)       shift ;;
     *)        POSITIONAL+=("$1"); shift ;;
@@ -146,6 +260,15 @@ fi
 
 # --- OPEN ---
 if [ "$CMD" = "open" ]; then
+  # WP-510 Патч 4: personality — маршрутизирующая метка "какая ИИ-личность вела
+  # сессию", не допуск к памяти (PIPE-14 решает перенос отдельно). Пустой флаг =
+  # unassigned — тот же итог, что и явный `--personality unassigned`, разница
+  # explicit/default не хранится (consensus 2026-08-04-11-codex-wp510-patch4-proposed).
+  PERSONALITY="${PERSONALITY:-unassigned}"
+  if [ "$PERSONALITY" != "unassigned" ] && ! [[ "$PERSONALITY" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+    fail "--personality: ожидается 'unassigned' либо UUID вида 8-4-4-4-12 (получено: '$PERSONALITY')" 1
+  fi
+
   if [ -n "$HOUSEKEEPING" ]; then
     # Housekeeping session: no ORZ, no WP, one semaphore per (agent, reason).
     HK_FILE="$SESSION_DIR/${AGENT}-housekeeping-${HOUSEKEEPING}.open"
@@ -159,6 +282,7 @@ if [ "$CMD" = "open" ]; then
           HK_AGE=$(( NOW_EPOCH - HK_CREATED_EPOCH ))
           if [ "$HK_AGE" -gt "$HK_MAX_AGE" ]; then
             mv "$HK_FILE" "${HK_FILE}.stale"
+            rm -f "${HK_FILE}.lease"
             echo "WARNING: housekeeping semaphore '${HOUSEKEEPING}' stale (${HK_AGE}s), renamed to .stale" >&2
           else
             fail "open --housekeeping: уже есть активная housekeeping-сессия '${HOUSEKEEPING}' (возраст ${HK_AGE}s). Закрой её или дождись TTL ${HK_MAX_AGE}s" 1
@@ -169,6 +293,7 @@ if [ "$CMD" = "open" ]; then
     {
       echo "---"
       echo "agent: $AGENT"
+      echo "personality: $PERSONALITY"
       echo "housekeeping: $HOUSEKEEPING"
       # bug-2026-07-10 (Day Close): select_semaphore() only matches on `wp:`/`slug:`
       # lines. Without this, 2+ open housekeeping semaphores are permanently
@@ -184,7 +309,18 @@ if [ "$CMD" = "open" ]; then
 
   [ -z "$WP" ] && fail "--wp обязателен для open" 2
 
-  # Auto-orphan stale semaphores from same agent (TTL 30 min).
+  # Report stale semaphores of the same agent — WITHOUT quarantining them.
+  #
+  # WP-484 Ф49 (04.08): this loop used to `mv` every semaphore older than the
+  # TTL into `.orphaned-*`. Age alone proves nothing about liveness, so it kept
+  # killing sessions that were actively working — live case that triggered the
+  # fix: a WP-7 session whose semaphore had been written to one minute earlier
+  # was quarantined because `opened_at` was 43 minutes old. Once renamed, the
+  # session can no longer close (`close` only selects `*.open`) — that is the
+  # mechanism behind Ф49's "delivered work, no formal Quick Close".
+  # Liveness is now decided where it matters (scope gate, via `lease_valid`),
+  # and quarantine stays only where a real death signal exists: a dead pid in
+  # `sweep_orphaned_semaphores` above.
   # WP-464: check EVERY open semaphore of this agent, not only the newest —
   # `head -1` used to leave older-but-still-stale siblings undetected whenever
   # a younger one existed for the same agent_id.
@@ -226,8 +362,12 @@ if [ "$CMD" = "open" ]; then
     STALE_AGE=$(( $(date +%s) - STALE_EPOCH ))
     if [ "$STALE_AGE" -gt 1800 ]; then
       STALE_WP=$(grep "^wp: " "$STALE" | cut -d' ' -f2- || echo "unknown")
-      mv "$STALE" "${STALE}.orphaned-${STALE_WP}"
-      echo "WARNING: orphaned semaphore ($(basename "$STALE")) переименован (WP: $STALE_WP, возраст ${STALE_AGE}s)" >&2
+      if lease_valid "$STALE"; then
+        echo "NOTE: у агента открыта долгая сессия $(basename "$STALE") (WP: $STALE_WP, возраст ${STALE_AGE}s) — права на коммит действуют, не трогаю" >&2
+      else
+        echo "WARNING: сессия $(basename "$STALE") (WP: $STALE_WP, возраст ${STALE_AGE}s) потеряла права на коммит." >&2
+        echo "         Закрой её (close --wp $STALE_WP) или продли: renew --wp $STALE_WP" >&2
+      fi
     fi
   done < <(ls -t "$SESSION_DIR/${AGENT}"-*.open 2>/dev/null || true)
 
@@ -246,6 +386,7 @@ if [ "$CMD" = "open" ]; then
   {
     echo "---"
     echo "agent: $AGENT"
+    echo "personality: $PERSONALITY"
     echo "wp: $WP"
     echo "task: ${TASK:-}"
     echo "slug: ${SLUG:-$WP}"
@@ -285,6 +426,7 @@ type: work
 wp: ${WP}
 duration_h: ~
 agent: $(orz_agent_name "$AGENT")
+personality: ${PERSONALITY}
 artifacts: []
 ---
 
@@ -376,6 +518,7 @@ if [ "$CMD" = "close" ]; then
       fail "close --housekeeping: нет активной housekeeping-сессии '${HOUSEKEEPING}' для $AGENT" 3
     fi
     mv "$HK_FILE" "${HK_FILE}.closed" 2>/dev/null || rm -f "$HK_FILE"
+    rm -f "${HK_FILE}.lease"
     echo "Housekeeping CLOSE: ${HOUSEKEEPING} ✅"
     exit 0
   fi
@@ -428,6 +571,7 @@ if [ "$CMD" = "close" ]; then
     "$AGENT_STATUS_SCRIPT" "$AGENT" idle "" "" 2>/dev/null || true
   fi
   mv "$SEM_FILE" "$SEM_FILE.closed" 2>/dev/null || rm -f "$SEM_FILE"
+  rm -f "$SEM_FILE.lease"
   # Remove agent pointer
   rm -f "$SESSION_DIR/current-${AGENT}.ptr"
   echo "Session CLOSE: $WP → $ORZ_FILE ✅"
@@ -528,7 +672,51 @@ print(os.path.relpath(f, r))
 fi
 
 # --- AUDIT ---
+# --- RENEW (WP-484 Ф49) ---
+# Продлевает право семафора разрешать коммит. Отдельная команда, а не побочный
+# эффект note-file: продление — намеренный сигнал «сессия жива», и связано оно
+# с конкретным семафором через имя файла аренды, чтобы активность одной сессии
+# не продлевала соседнюю.
+if [ "$CMD" = "renew" ]; then
+  RENEW_AGENT="${AGENT:-${IWE_AGENT:-claude-code}}"
+  if [ -n "$SESSION_ID_ARG" ]; then
+    SEM_FILE="$SESSION_DIR/${RENEW_AGENT}-${SESSION_ID_ARG}.open"
+    [ -f "$SEM_FILE" ] || fail "renew: нет открытой сессии ${RENEW_AGENT}-${SESSION_ID_ARG}" 3
+  else
+    # Отказ при неоднозначности теперь живёт в самом select_semaphore (та же
+    # находка Codex касалась и close/note-file), поэтому renew не держит своей
+    # копии перебора — достаточно пробросить код возврата.
+    SEM_FILE=$(select_semaphore "$RENEW_AGENT" "${WP:-}" "${SLUG:-}") && SG_RC=0 || SG_RC=$?
+    [ "$SG_RC" -eq 2 ] && exit 1
+    if [ "$SG_RC" -ne 0 ] || [ -z "$SEM_FILE" ] || [ ! -f "$SEM_FILE" ]; then
+      fail "renew: нет открытой сессии для агента '$RENEW_AGENT' (уточни --wp/--slug/--session-id)" 3
+    fi
+  fi
+  RENEW_SESSION_ID=$(grep "^session_id: " "$SEM_FILE" | cut -d' ' -f2- || echo "unknown")
+  LEASE_TMP="${SEM_FILE}.lease.tmp.$$"
+  {
+    echo "renewed_at: $(now_iso)"
+    echo "session_id: $RENEW_SESSION_ID"
+  } > "$LEASE_TMP"
+  # Параллельный close мог переименовать семафор, пока мы собирали аренду —
+  # тогда публикация создала бы осиротевший .lease и отрапортовала о продлении
+  # уже закрытой сессии (Codex, холодное ревью 04.08).
+  if [ ! -f "$SEM_FILE" ]; then
+    rm -f "$LEASE_TMP"
+    fail "renew: сессия $(basename "$SEM_FILE") закрылась во время продления — продлевать нечего" 3
+  fi
+  # Замена целиком, а не дописывание: файл аренды всегда хранит одно значение,
+  # поэтому у читателя нет выбора «первая или последняя запись».
+  mv "$LEASE_TMP" "${SEM_FILE}.lease"
+  echo "Lease RENEW: $(basename "$SEM_FILE") — права на коммит продлены на $((LEASE_SEC / 60)) мин"
+  exit 0
+fi
+
 if [ "$CMD" = "audit" ]; then
+  if [ "$CLEANUP_ORPHANS" -eq 1 ]; then
+    sweep_orphaned_semaphores
+    echo
+  fi
   SINCE="${SINCE:-$(date -v-7d +%Y-%m-%d 2>/dev/null || date -d '7 days ago' +%Y-%m-%d)}"
   echo "=== Session Guard Audit (since $SINCE) ==="
   echo
@@ -538,7 +726,15 @@ if [ "$CMD" = "audit" ]; then
   if [ -n "$ACTIVE" ]; then
     echo "⚠️ Активные сессии без close:"
     for f in $ACTIVE; do
-      echo "  $(basename "$f")"
+      if lease_valid "$f"; then
+        echo "  $(basename "$f")"
+      else
+        # WP-484 Ф49: просроченная аренда — не смерть сессии, а потеря права
+        # разрешать коммит. Показываем отдельно, чтобы долг был виден человеку
+        # в штатном ритме (Открытие дня читает этот же вывод), а не всплывал
+        # внезапным блоком на коммите.
+        echo "  $(basename "$f")  ⏳ права на коммит истекли (renew или close)"
+      fi
       sed 's/^/    /' "$f"
     done
     echo
@@ -590,8 +786,45 @@ fi
 
 # --- GIT PRE-COMMIT CHECK ---
 if [ "$CMD" = "pre-commit-check" ]; then
-  ACTIVE=$(find "$SESSION_DIR" -name "*.open" -type f 2>/dev/null)
+  # WP-484 Ф49: право разрешать коммит истекает по аренде и отзывается у ВСЕГО
+  # набора файлов семафора сразу. Частичный отзыв (запретить только новые
+  # `file:`) дыру WP-507 не закрывает: уже перечисленные пути продолжали бы
+  # пропускать чужие правки, сделанные после того, как сессия фактически
+  # прекратилась. Отсюда же исчезновение mtime-байпаса просроченного семафора —
+  # чем он старше, тем больше посторонних файлов проходило «по свежести».
+  # Граница механизма (осознанная, не недосмотр): срок проверяется один раз за
+  # хук, поэтому коммит, начатый за мгновение до истечения аренды, пройдёт.
+  # Повторная проверка перед выходом окно не закрывает — между концом хука и
+  # записью объекта git время идёт в любом случае, — а выглядела бы как
+  # гарантия атомарности. При сроке в 4 часа «просрочен на доли секунды» и
+  # «действителен» описывают одно и то же состояние сессии.
+  ALL_OPEN=$(find "$SESSION_DIR" -name "*.open" -type f 2>/dev/null)
+  ACTIVE=""
+  EXPIRED=""
+  for sem in $ALL_OPEN; do
+    if lease_valid "$sem"; then
+      ACTIVE="${ACTIVE}${sem}"$'\n'
+    else
+      EXPIRED="${EXPIRED}${sem}"$'\n'
+    fi
+  done
+  ACTIVE="${ACTIVE%$'\n'}"
+  EXPIRED="${EXPIRED%$'\n'}"
+
   if [ -z "$ACTIVE" ]; then
+    if [ -n "$EXPIRED" ]; then
+      echo "🚫 SESSION-GUARD: коммит заблокирован — у открытых сессий истёк срок полномочий." >&2
+      echo "" >&2
+      for sem in $EXPIRED; do
+        sem_wp=$(grep "^wp: " "$sem" | cut -d' ' -f2- || echo "?")
+        echo "  · $(basename "$sem") (WP: $sem_wp)" >&2
+      done
+      echo "" >&2
+      echo "Сессия по-прежнему существует и закрывается штатно. Выбери:" >&2
+      echo "  продлить:  bash {{WORKSPACE_DIR}}/scripts/session-guard.sh renew --wp WP-N" >&2
+      echo "  закрыть:   bash {{WORKSPACE_DIR}}/scripts/session-guard.sh close --wp WP-N" >&2
+      exit 4
+    fi
     cat >&2 <<'EOF'
 🚫 SESSION-GUARD: коммит заблокирован.
 
@@ -701,4 +934,4 @@ EOF
   exit 0
 fi
 
-fail "Unknown command: $CMD (use: open, close, audit, note-file, pre-commit-check)"
+fail "Unknown command: $CMD (use: open, close, audit, renew, note-file, pre-commit-check)"

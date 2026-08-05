@@ -332,6 +332,47 @@ fi
 
 echo ""
 
+# ---------- Раздел 3b: Promoted-copy drift (issue #347) ----------
+#
+# CI's check-seed-drift.sh holds scripts/ ↔ seed/strategy/scripts/ INSIDE the
+# template, but the installed governance copy (created once by setup.sh from
+# seed/strategy/) lives on the user machine where CI cannot see it. The audit
+# runs exactly where both sides physically exist — compare them here.
+# All three files must be checked, absence included: a missing lib/common.sh
+# breaks the scaffold just as silently as a stale one.
+
+echo "## 3b. Промотированные копии Day Open (seed шаблона ↔ установленный governance)"
+echo ""
+SEED_SCRIPTS="$IWE_ROOT/FMT-exocortex-template/seed/strategy/scripts"
+if [ ! -d "$SEED_SCRIPTS" ]; then
+    echo "_N/A — шаблон с seed/strategy/scripts/ не найден._"
+elif [ -z "${DS_DIR:-}" ] || [ ! -d "$DS_DIR/scripts" ]; then
+    echo "_N/A — governance-репо без scripts/ (конвейер Day Open не разворачивался)._"
+else
+    PROMOTED_DRIFT=0
+    for rel in day-open-scaffold.sh day-open-pipeline.sh lib/common.sh; do
+        seed_f="$SEED_SCRIPTS/$rel"
+        inst_f="$DS_DIR/scripts/$rel"
+        if [ ! -f "$seed_f" ]; then
+            echo "- ⚠️ \`seed/strategy/scripts/$rel\` отсутствует в шаблоне — регрессия доставки seed"
+            PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+        elif [ ! -f "$inst_f" ]; then
+            echo "- ⚠️ \`scripts/$rel\` не установлен в governance-репо — конвейер Day Open неполный"
+            PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+        elif ! cmp -s "$seed_f" "$inst_f"; then
+            echo "- ⚠️ \`scripts/$rel\` разошёлся с seed шаблона — обновить: \`cp \"$seed_f\" \"$inst_f\"\` (свои правки в копии сначала сохранить)"
+            PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+        else
+            echo "- ✅ \`scripts/$rel\` совпадает с seed"
+        fi
+    done
+    if [ "$PROMOTED_DRIFT" -gt 0 ]; then
+        OPTIONAL_MISSING=$((OPTIONAL_MISSING + PROMOTED_DRIFT))
+    fi
+fi
+
+echo ""
+
 # ---------- Раздел 4: User customizations (L3) ----------
 #
 # L3 живёт в 3-х местах: extensions/, params.yaml (отличия от skeleton),
@@ -382,11 +423,15 @@ echo ""
 echo "### params.yaml — отличия от шаблона"
 echo ""
 PARAMS_USER="$IWE_ROOT/params.yaml"
-PARAMS_TEMPLATE="$IWE_ROOT/FMT-exocortex-template/params.yaml"
+# issue #348: эталон переехал в params.yaml.example — рабочий params.yaml внутри
+# шаблона больше не трекается. Старое имя остаётся запасным вариантом: на установке,
+# обновлённой не полностью, рядом может лежать прежний файл.
+PARAMS_TEMPLATE="$IWE_ROOT/FMT-exocortex-template/params.yaml.example"
+[ -f "$PARAMS_TEMPLATE" ] || PARAMS_TEMPLATE="$IWE_ROOT/FMT-exocortex-template/params.yaml"
 if [ ! -f "$PARAMS_USER" ]; then
     echo "_params.yaml не найден — конфигурация не инициализирована_"
 elif [ ! -f "$PARAMS_TEMPLATE" ]; then
-    echo "_FMT-exocortex-template/params.yaml не найден — сравнение невозможно_"
+    echo "_FMT-exocortex-template/params.yaml.example не найден — сравнение невозможно_"
 else
     set +e
     # Игнорируем комментарии и пустые строки при сравнении

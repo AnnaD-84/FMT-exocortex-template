@@ -53,6 +53,10 @@ _ALWAYS_EXCLUDED_NAMES = frozenset({
     ".DS_Store",
     ".gitkeep",
     "params.yaml",
+    # issue #348: рабочий params.yaml больше не трекается шаблоном, в репозитории
+    # лежит образец. Оба имени — пользовательское пространство, ни то ни другое
+    # не доставляется через манифест: рабочий файл засевает build-runtime.sh.
+    "params.yaml.example",
     "generate-manifest.sh",
     "update-manifest.json",
     "update-manifest.local.json",

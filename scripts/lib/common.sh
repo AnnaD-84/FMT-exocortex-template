@@ -65,24 +65,109 @@ iwe_resolve_governance_repo() {
 # evidence fallback — a scheduler log written in the last 2 days under
 # ~/logs/synchronizer/, regardless of which launcher wrote it — so the next
 # unenumerated launch mechanism doesn't reopen this same bug class again.
-iwe_scheduler_active() {
-  if command -v launchctl >/dev/null 2>&1 \
-    && launchctl list 2>/dev/null | grep -qE "com\.(exocortex\.scheduler|strategist\.morning|strategist\.weekreview|extractor\.inbox-check)"; then
-    return 0
-  fi
-  if command -v systemctl >/dev/null 2>&1; then
-    # No --all: list-timers without it already restricts to loaded+active
-    # units. --all would also match a disabled/stopped timer, reporting a
-    # dead scheduler as 🟢.
-    systemctl --user list-timers --no-legend 2>/dev/null \
-      | grep -qE "iwe-(exocortex-scheduler|strategist-morning|strategist-weekreview|extractor-inbox-check)\.timer" && return 0
-  fi
+#
+# issue #347 (fourth recurrence, this time not in detection but in interpretation):
+# a plain boolean collapsed three very different situations into "not active" —
+# never installed here, installed but stopped, and "the launcher query itself
+# failed so nothing can be concluded". Callers painted all three red and opened a
+# fresh incident file every morning on an install where the scheduler had simply
+# never been deployed. iwe_scheduler_state() below reports which of the four it is;
+# iwe_scheduler_active() stays as the boolean wrapper for callers that only ask
+# "is it running right now".
+
+# iwe_scheduler_deployment_evidence — did anyone ever install a scheduler here?
+# Deployment artefacts outlive the scheduler being stopped, so their absence is
+# what separates "never installed" from "installed and broken".
+iwe_scheduler_deployment_evidence() {
+  # find, not `ls A B C`: ls exits non-zero when ANY of the three globs matches
+  # nothing, and roles install independently (synchronizer ships only
+  # com.exocortex.scheduler.plist, extractor only its own). A partial install would
+  # therefore read as "no evidence" and a real outage would silently downgrade to
+  # not_deployed — disabling the very detection this function exists for.
+  find "$HOME/Library/LaunchAgents" -maxdepth 1 \
+    \( -name 'com.exocortex.*.plist' -o -name 'com.strategist.*.plist' -o -name 'com.extractor.*.plist' \) \
+    2>/dev/null | grep -q . && return 0
+  find "$HOME/.config/systemd/user" -maxdepth 1 -name 'iwe-*.timer' 2>/dev/null | grep -q . && return 0
   if command -v crontab >/dev/null 2>&1 \
     && crontab -l 2>/dev/null | grep -qE "scheduler\.sh|iwe-(exocortex-scheduler|strategist|extractor)"; then
     return 0
   fi
-  find "$HOME/logs/synchronizer" -maxdepth 1 -iname "*scheduler*.log" -mtime -2 2>/dev/null | grep -q . && return 0
+  # Any historical log, at any age — proof the scheduler ran here at least once.
+  find "$HOME/logs/synchronizer" -maxdepth 1 -iname "*scheduler*.log" 2>/dev/null | grep -q . && return 0
   return 1
+}
+
+# iwe_scheduler_state — prints exactly one of:
+#   active            — a unit is registered and live with this OS's launcher
+#   deployed_inactive — artefacts exist, nothing live right now (a real outage)
+#   not_deployed      — no unit, no crontab entry, no log history: never installed here
+#   unknown           — a launcher is present but its query failed, so nothing is provable
+iwe_scheduler_state() {
+  local probe_failed=false launcher_out
+
+  if command -v launchctl >/dev/null 2>&1; then
+    if launcher_out=$(launchctl list 2>/dev/null); then
+      printf '%s\n' "$launcher_out" \
+        | grep -qE "com\.(exocortex\.scheduler|strategist\.morning|strategist\.weekreview|extractor\.inbox-check)" \
+        && { echo active; return 0; }
+    else
+      probe_failed=true
+    fi
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    # No --all: list-timers without it already restricts to loaded+active units.
+    # --all would also match a disabled/stopped timer, reporting a dead scheduler
+    # as 🟢. A failing call here is common and meaningful: inside WSL or a container
+    # without a user session bus, `systemctl --user` errors out rather than
+    # reporting "no timers" — that is `unknown`, not "not deployed".
+    if launcher_out=$(systemctl --user list-timers --no-legend 2>/dev/null); then
+      printf '%s\n' "$launcher_out" \
+        | grep -qE "iwe-(exocortex-scheduler|strategist-morning|strategist-weekreview|extractor-inbox-check)\.timer" \
+        && { echo active; return 0; }
+    else
+      probe_failed=true
+    fi
+  fi
+
+  # `crontab -l` exits non-zero for the ordinary "no crontab for this user" case as
+  # well as for a real failure, so a non-zero status here is not evidence of either.
+  if command -v crontab >/dev/null 2>&1 \
+    && crontab -l 2>/dev/null | grep -qE "scheduler\.sh|iwe-(exocortex-scheduler|strategist|extractor)"; then
+    echo active
+    return 0
+  fi
+
+  # Generic evidence fallback (issue #314): a scheduler log written in the last two
+  # days counts as live regardless of which launcher wrote it.
+  if find "$HOME/logs/synchronizer" -maxdepth 1 -iname "*scheduler*.log" -mtime -2 2>/dev/null | grep -q .; then
+    echo active
+    return 0
+  fi
+
+  # `unknown` is checked BEFORE deployment evidence, not after: on WSL the timer files
+  # sit in ~/.config/systemd/user/ while `systemctl --user` cannot answer at all. With
+  # the checks the other way round that host reads as deployed_inactive → red Mode A +
+  # a fresh incident every morning, which is exactly the false alarm this split exists
+  # to remove. A failed probe means "not provable", and that outranks any artefact.
+  if [ "$probe_failed" = true ]; then
+    echo unknown
+    return 0
+  fi
+
+  if iwe_scheduler_deployment_evidence; then
+    echo deployed_inactive
+    return 0
+  fi
+
+  echo not_deployed
+}
+
+# Boolean wrapper: true only for `active`. Kept for callers that genuinely need a
+# yes/no answer (day-open-smoke.sh); anything that reports status to a human should
+# use iwe_scheduler_state() so "not deployed" and "cannot tell" stay distinguishable.
+iwe_scheduler_active() {
+  [ "$(iwe_scheduler_state)" = "active" ]
 }
 
 # tg_notify MESSAGE — best-effort Telegram alert via TELEGRAM_BOT_TOKEN/

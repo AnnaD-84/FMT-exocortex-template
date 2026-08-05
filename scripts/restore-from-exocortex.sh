@@ -73,15 +73,19 @@ $DRY_RUN && warn "режим --dry-run: изменения не применяю
 # === Шаг 1: memory-файлы (всё кроме CLAUDE.md) → auto-memory ===
 run "mkdir -p \"$MEMORY_DST\""
 mem_count=0
-shopt -s nullglob
-for f in "$EXOCORTEX_SRC"/*.md "$EXOCORTEX_SRC"/*.yaml "$EXOCORTEX_SRC"/*.yml; do
+# issue #343, вторая половина: плоский glob по верхнему уровню возвращал только
+# memory/*.md и молча терял подпапки — memory/reference/agent-core.md не восстанавливался
+# даже из бэкапа, где он есть. find обходит дерево целиком, относительный путь
+# сохраняется, поэтому вложенность доезжает как есть.
+while IFS= read -r f; do
     [ -f "$f" ] || continue
-    fname=$(basename "$f")
-    [ "$fname" = "CLAUDE.md" ] && continue   # CLAUDE.md восстанавливается в workspace, не в memory/
-    run "cp \"$f\" \"$MEMORY_DST/$fname\""
+    rel="${f#"$EXOCORTEX_SRC"/}"
+    [ "$rel" = "CLAUDE.md" ] && continue   # CLAUDE.md восстанавливается в workspace, не в memory/
+    case "$rel" in extensions/*) continue ;; esac   # extensions/ — отдельный шаг 1b ниже
+    run "mkdir -p \"$MEMORY_DST/$(dirname "$rel")\""
+    run "cp \"$f\" \"$MEMORY_DST/$rel\""
     mem_count=$((mem_count + 1))
-done
-shopt -u nullglob
+done < <(find "$EXOCORTEX_SRC" -type f \( -name '*.md' -o -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | sort)
 log "memory-файлов восстановлено: $mem_count"
 
 # === Шаг 1b: extensions/ → workspace (issue #235: exocortex/extensions/ зеркалится

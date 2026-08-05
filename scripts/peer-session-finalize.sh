@@ -98,13 +98,13 @@ if [[ "$VALIDATE" == true ]]; then
     local file="$2"
     if ! grep -qE "^${field}:" "$file"; then
       echo "  ✗ Поле '${field}' отсутствует"
-      ((ERRORS++))
+      ERRORS=$((ERRORS + 1))
     else
       local val
       val="$(grep -E "^${field}:" "$file" | head -1 | sed 's/^[^:]*:[[:space:]]*//' | sed 's/"//g' | sed "s/'//g" | tr -d ' ')"
       if [[ -z "$val" || "$val" == "~" || "$val" == "null" ]]; then
         echo "  ✗ Поле '${field}' пустое"
-        ((ERRORS++))
+        ERRORS=$((ERRORS + 1))
       else
         echo "  ✓ ${field}: ${val}"
       fi
@@ -127,7 +127,7 @@ if [[ "$VALIDATE" == true ]]; then
     val="$(grep -E "^${field}:" "$META" | head -1)"
     if [[ "$val" == *'$('* ]]; then
       echo "  ✗ Поле '${field}' содержит неразвёрнутый shell-плейсхолдер: ${val}"
-      ((ERRORS++))
+      ERRORS=$((ERRORS + 1))
     fi
   done
 
@@ -140,7 +140,7 @@ if [[ "$VALIDATE" == true ]]; then
   if [[ -n "$start_val" && -n "$end_val" && "$start_val" != *'$('* && "$end_val" != *'$('* ]]; then
     if [[ "$end_val" < "$start_val" ]]; then
       echo "  ✗ end_time ($end_val) раньше start_time ($start_val)"
-      ((ERRORS++))
+      ERRORS=$((ERRORS + 1))
     fi
   fi
 
@@ -328,18 +328,36 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding
     tmp.write(synth_prompt)
     tmp_path = tmp.name
 
+# synth_prompt above already inlines the full transcript into stdin — neither
+# adapter needs --add-dir to synthesize, and claude-peer-adapter.sh
+# unconditionally rejects it (exit 64, WP-458 contract: text-only reviewer,
+# no file access), which made every synthesis call through this path fail
+# whenever ADAPTER resolved to claude-peer-adapter.sh (writer_agent !=
+# "kimi-headless"). Same bug as kimi-peer-writer/SKILL.md's synthesis step,
+# found independently by Codex re-auditing that fix — this script is a
+# separate finalize path, not covered by that first pass. stderr is now
+# captured (not discarded) so a future regression leaves a real diagnostic
+# in the fallback stub instead of the same generic guess every time.
+stderr_path = tmp_path + '.err'
 try:
-    with open(tmp_path, 'r', encoding='utf-8') as stdin_f, open(report_file, 'w', encoding='utf-8') as stdout_f:
+    with open(tmp_path, 'r', encoding='utf-8') as stdin_f, \
+         open(report_file, 'w', encoding='utf-8') as stdout_f, \
+         open(stderr_path, 'w', encoding='utf-8') as stderr_f:
         result = subprocess.run(
-            ['bash', adapter, '--add-dir', session_dir],
+            ['bash', adapter],
             stdin=stdin_f,
             stdout=stdout_f,
-            stderr=subprocess.DEVNULL
+            stderr=stderr_f
         )
 finally:
     os.unlink(tmp_path)
 
 if result.returncode != 0 or os.path.getsize(report_file) == 0:
+    stderr_tail = ''
+    if os.path.exists(stderr_path):
+        with open(stderr_path, encoding='utf-8') as f:
+            stderr_tail = f.read()[-2000:]
+        os.unlink(stderr_path)
     now = datetime.datetime.utcnow().isoformat() + 'Z'
     with open(report_file, 'w', encoding='utf-8') as f:
         f.write(f"""---
@@ -352,8 +370,17 @@ note: синтез не выполнен (субагент недоступен)
 
 Стенограмма диалога: см. файлы реплик в папке сессии.
 Повтори синтез: `bash scripts/peer-session-finalize.sh --finalize {session_id}`
+
+## Диагностика (stderr адаптера, для отладки — не для пилота)
+
+```
+returncode: {result.returncode}
+{stderr_tail if stderr_tail else '(stderr пуст)'}
+```
 """)
     sys.exit(1)
+elif os.path.exists(stderr_path):
+    os.unlink(stderr_path)
 PYEOF
   fi
 

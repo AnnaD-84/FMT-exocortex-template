@@ -415,6 +415,11 @@ else
     for hook in "$HOOKS_DIR"/*.sh; do
         [ -f "$hook" ] || continue
         name=$(basename "$hook")
+        # Каталог исторически содержит не только Claude hooks. Не угадываем по
+        # имени: самостоятельный сервис/CLI/библиотека обязан явно объявить
+        # контракт в собственной шапке. Новый неклассифицированный файл всё
+        # равно даст warning и потребует решения владельца.
+        grep -q '^# claude-hook: false — ' "$hook" && continue
         # Skip known user-deployed hooks (see .claude/skills/setup-wakatime/SKILL.md)
         skip=0
         for ud in "${USER_DEPLOYED_HOOKS[@]}"; do [ "$name" = "$ud" ] && skip=1 && break; done

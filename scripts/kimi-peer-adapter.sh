@@ -30,6 +30,11 @@
 
 set -uo pipefail
 
+# Declared before cleanup_peer's trap is armed (below) so `set -u` can't fault
+# on an unset read if the script exits early, before the lock is ever attempted.
+OAUTH_LOCK_DIR="${IWE_PEER_LOCK_DIR:-/tmp/kimi-peer-locks}/kimi-oauth-refresh.lockdir"
+OAUTH_LOCK_HELD=false
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # KIMI_BIN auto-detect: env override → PATH → VS Code extension paths (macOS/Linux/WSL)
@@ -97,7 +102,10 @@ done
 # === Фильтрация --add-dir через .agentigore + PII sanity-check ===
 
 FILTERED_DIRS=()
-TMP_ROOT=$(mktemp -d -t kimi-peer-XXXXXX)
+# `mktemp -d -t PREFIX` means different things on GNU and BSD (docs/PLATFORM-COMPAT.md).
+# Passing an explicit template keeps the readable prefix and behaves the same on both —
+# identical form to codex-peer-adapter.sh.
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/kimi-peer-XXXXXX")
 
 # Merged .agentigore (union: ~/.iwe → git-root → session_dir)
 MERGED_AGENTIGORE="$TMP_ROOT/.agentigore"
@@ -384,6 +392,10 @@ cleanup_peer() {
   kill "$PEER_HB_PID" 2>/dev/null || true
   rm -f "$PEER_SEM_FILE"
   rm -rf "$TMP_ROOT"
+  # Only release the OAuth-refresh lock if this invocation actually holds it —
+  # an invocation that gave up waiting must never remove the winner's lock.
+  # rm -rf, not rmdir: the lock dir holds a pid file (staleness check), not empty.
+  [ "$OAUTH_LOCK_HELD" = true ] && rm -rf "$OAUTH_LOCK_DIR" 2>/dev/null
 }
 trap cleanup_peer EXIT INT TERM
 [ -x "$_IWE_ARS" ] && bash "$_IWE_ARS" --session-id "$KIMI_SESSION_ID" kimi peer-session "$KIMI_TASK" 2>/dev/null &
@@ -448,10 +460,44 @@ fi
 # Concurrent kimi-peer-adapter.sh invocations racing on the same refresh_token trigger
 # Ory reuse-detection, which revokes the token and forces a fresh browser login.
 # We can't patch the closed Kimi binary, so we serialize our own invocations instead.
-OAUTH_LOCK_FILE="${IWE_PEER_LOCK_DIR:-/tmp/kimi-peer-locks}/kimi-oauth-refresh.lock"
-LOCKF_BIN="$(command -v lockf 2>/dev/null || echo /usr/bin/lockf)"
-LOCKF_PREFIX=()
-[ -x "$LOCKF_BIN" ] && LOCKF_PREFIX=("$LOCKF_BIN" -k -t 90 "$OAUTH_LOCK_FILE")
+#
+# Portable mkdir-based lock (peer-session 2026-08-04-08-wp7-f44-sandbox-review):
+# the previous `lockf` binary is BSD/macOS-only and absent on most Linux
+# distros — the old code silently skipped serialization when missing (found
+# 04.08, pilot decision: eliminate the dependency rather than choose between
+# fail-open and fail-closed). `mkdir` is atomic on every POSIX filesystem.
+acquire_oauth_lock() {
+  mkdir -p "$(dirname "$OAUTH_LOCK_DIR")" 2>/dev/null
+  local waited=0
+  while true; do
+    if mkdir "$OAUTH_LOCK_DIR" 2>/dev/null; then
+      echo "$$" > "$OAUTH_LOCK_DIR/pid" 2>/dev/null
+      OAUTH_LOCK_HELD=true
+      return 0
+    fi
+    # Stale-lock guard: liveness (kill -0 on the holder's PID), not age — a
+    # legitimate Kimi call can run up to 300s (perl alarm below), well past
+    # any fixed timeout, so a time-based guard would steal a live holder's
+    # lock (found in cold review of peer-session
+    # 2026-08-04-08-wp7-f44-sandbox-review, same pattern already used for
+    # the pidfile lock above). No sleep is skipped on this branch — always
+    # falls through to the shared wait below, so a holder whose pid file
+    # hasn't landed yet (mkdir/pid-write isn't atomic together) just waits
+    # a beat instead of racing to break a lock it can't yet identify.
+    local holder_pid
+    holder_pid=$(cat "$OAUTH_LOCK_DIR/pid" 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$holder_pid" ] && ! kill -0 "$holder_pid" 2>/dev/null; then
+      rm -rf "$OAUTH_LOCK_DIR" 2>/dev/null
+    fi
+    [ "$waited" -ge 90 ] && return 1
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+if ! acquire_oauth_lock; then
+  echo "ERROR: OAuth refresh lock busy after 90s — another Kimi process is mid-refresh on $OAUTH_LOCK_DIR." >&2
+  exit 1
+fi
 
 # Inline mode: prompt already contains the files, --add-dir not needed
 KIMI_DIR_ARGS=()
@@ -460,7 +506,7 @@ if [ "${IWE_PEER_INLINE:-0}" != "1" ]; then
 fi
 
 if [ "$KIMI_CLI_STYLE" = "prompt-arg" ]; then
-  KIMI_RAW=$("${LOCKF_PREFIX[@]+"${LOCKF_PREFIX[@]}"}" perl -e 'alarm 300; exec @ARGV' -- \
+  KIMI_RAW=$(perl -e 'alarm 300; exec @ARGV' -- \
     "${GUARD_ARGS[@]+"${GUARD_ARGS[@]}"}" "$KIMI_BIN" \
     "${KIMI_PROMPT_ARGS[@]}" \
     ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} \
@@ -468,7 +514,7 @@ if [ "$KIMI_CLI_STYLE" = "prompt-arg" ]; then
     < /dev/null \
     2>"$KIMI_STDERR")
 else
-  KIMI_RAW=$("${LOCKF_PREFIX[@]+"${LOCKF_PREFIX[@]}"}" perl -e 'alarm 300; exec @ARGV' -- \
+  KIMI_RAW=$(perl -e 'alarm 300; exec @ARGV' -- \
     "${GUARD_ARGS[@]+"${GUARD_ARGS[@]}"}" "$KIMI_BIN" --quiet --yolo \
     ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} \
     ${KIMI_DIR_ARGS[@]+"${KIMI_DIR_ARGS[@]}"} \
@@ -520,9 +566,23 @@ else
   KIMI_OUTPUT=$(printf '%s\n' "$KIMI_RAW" | grep -v "^To resume this session:")
 fi
 
-# lockf timeout (EX_TEMPFAIL) — another Kimi process held the OAuth-refresh lock past 90s
+# lockf and Kimi can both return EX_TEMPFAIL (75). Distinguish the child's
+# connection failure by its captured stderr — the only source reliably scoped
+# to this invocation. A shared-logfile mtime/tail heuristic was tried and
+# dropped (peer-session 2026-08-04-08-wp7-f44-sandbox-review): concurrent Kimi
+# calls on this machine can write a matching pattern into the same global
+# ~/.kimi/logs/kimi.log within the same second, misattributing one
+# invocation's OAuth-lock timeout to another's unrelated network failure.
 if [ "$PERL_EXIT" -eq 75 ]; then
-  echo "ERROR: OAuth refresh lock busy after 90s — another Kimi process is mid-refresh on $OAUTH_LOCK_FILE." >&2
+  if grep -qE 'APIConnectionError|Connection error|Network is unreachable|Operation not permitted' "$KIMI_STDERR" 2>/dev/null; then
+    echo "ERROR: Kimi network connection failed. Check sandbox network access and the api.kimi.com/api.moonshot.cn allowlist." >&2
+  else
+    echo "ERROR: Kimi peer call failed (exit 75) — cause not determined (network denial vs OAuth refresh lock on $OAUTH_LOCK_DIR); child stderr had no clear signal." >&2
+  fi
+  if [ -s "$KIMI_STDERR" ]; then
+    echo "--- kimi stderr (tail) ---" >&2
+    tail -20 "$KIMI_STDERR" >&2
+  fi
   exit 1
 fi
 
