@@ -76,6 +76,10 @@ do_backup() {
   fi
 
   # Mirror *.md/*.yaml/*.yml from auto-memory; --delete prunes files removed upstream.
+  # exocortex/ is a multi-writer destination: extensions/, fault-profile, hindsight,
+  # and legacy decision logs are primary data written by other platform mechanisms.
+  # Root-anchored excludes are therefore ownership boundaries, not copy masks. Rsync
+  # protects excluded receiver paths from --delete unless --delete-excluded is used.
   # CLAUDE.md is excluded so the workspace copy below isn't deleted by --delete.
   # -L (copy-links) dereferences symlinks so target content is copied, not the link —
   # prevents a self-referencing ELOOP symlink from recurring here (WP-7 DOC8).
@@ -90,6 +94,10 @@ do_backup() {
   rsync -aLm --delete \
     --exclude='CLAUDE.md' \
     --exclude='day-rhythm-config.yaml' \
+    --exclude='/extensions/***' \
+    --exclude='/agent-fault-profile/***' \
+    --exclude='/hindsight/***' \
+    --exclude='/decisions/***' \
     --include='*/' \
     --include='*.md' --include='*.yaml' --include='*.yml' \
     --exclude='*' \

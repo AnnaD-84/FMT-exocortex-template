@@ -93,7 +93,7 @@ IWE_DISPATCHER_ETAG_DB = os.path.expanduser(
 # Version self-check — see _check_dispatcher_version().
 __version__ = "2026-05-30-y2-1"
 # WP-503 Ф5.2 Security pre-flight (2026-07-26): PII-filter + shell-injection guard
-_SECURITY_VERSION = "2026-07-26-security-1"
+_SECURITY_VERSION = "2026-08-06-security-2"
 
 # === Security: PII-filter + shell-injection guard (WP-503 Ф5.2) ===
 # See also: WP-500 (agent-trace-recorder.sh) for similar PII-masking pattern.
@@ -723,24 +723,41 @@ def _classify_claude_failure(stderr: str, stdout: str) -> str:
 _SECURITY_WHITELIST_PATH = Path(__file__).parent / "config" / "pipeline-security-whitelist.yaml"
 
 
+class SecurityConfigurationError(RuntimeError):
+    """Headless-вызов запрещён: защитная конфигурация отсутствует или невалидна."""
+
+
 def _load_disallowed_tools() -> list[str]:
     """WP-503 Ф9 (АрхГейт Ф5 NBR №3): headless Executor не должен повторить
     инцидент WP-7 23.07 (`railway list_variables` без фильтра напечатал ~90
     боевых секретов). Читает файл заново на каждый вызов (не кэширует) —
     расширение whitelist не требует перезапуска диспетчера.
 
-    Пустой список при отсутствующем/битом файле — это НЕ fail-open дыра:
-    отсутствие --disallowedTools просто не сужает права сверх дефолтных
-    permission-настроек CLI, whitelist добавляет ограничения, не снимает их."""
-    import yaml
+    Fail-closed: без непустого валидного списка Claude Executor не запускается.
+    Это защитный контроль, а не необязательная настройка CLI."""
+    try:
+        import yaml
+    except ImportError as exc:
+        raise SecurityConfigurationError("PyYAML is unavailable") from exc
+
     try:
         with open(_SECURITY_WHITELIST_PATH, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError) as e:
-        log(f"security whitelist не загружен ({_SECURITY_WHITELIST_PATH}): {e}, продолжаю без --disallowedTools", "WARN")
-        return []
-    tools = data.get("disallowed_tools") or []
-    return [str(t) for t in tools if isinstance(t, str)]
+            data = yaml.safe_load(f)
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise SecurityConfigurationError(
+            f"cannot load {_SECURITY_WHITELIST_PATH}: {exc}"
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise SecurityConfigurationError("security whitelist root must be a mapping")
+    tools = data.get("disallowed_tools")
+    if not isinstance(tools, list) or not tools:
+        raise SecurityConfigurationError("disallowed_tools must be a non-empty list")
+    if any(not isinstance(tool, str) or not tool.strip() for tool in tools):
+        raise SecurityConfigurationError(
+            "every disallowed_tools item must be a non-empty string"
+        )
+    return list(dict.fromkeys(tool.strip() for tool in tools))
 
 
 class Executor:
@@ -763,8 +780,7 @@ class ClaudeCodeExecutor(Executor):
     def build_cmd(self, prompt: str, model: str) -> list[str]:
         cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "text"]
         disallowed = _load_disallowed_tools()
-        if disallowed:
-            cmd += ["--disallowedTools", ",".join(disallowed)]
+        cmd += ["--disallowedTools", ",".join(disallowed)]
         return cmd
 
 
@@ -841,7 +857,12 @@ def invoke_claude_with_heartbeat(
     name is kept for backward compatibility with existing call sites.
     """
     executor = resolve_executor(executor_key)
-    cmd = executor.build_cmd(prompt, model)
+    try:
+        cmd = executor.build_cmd(prompt, model)
+    except SecurityConfigurationError as exc:
+        output = f"SECURITY CONFIG ERROR: {exc}"
+        log(output, "ERROR")
+        return False, output
     started = time.monotonic()
 
     try:

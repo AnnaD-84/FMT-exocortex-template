@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
       exit 64
       ;;
     --permission-mode)
-      echo "ERROR: permission mode is fixed to plan for claude-peer-adapter.sh." >&2
+      echo "ERROR: permission mode is fixed to dontAsk for claude-peer-adapter.sh." >&2
       exit 64
       ;;
     *)               shift ;;
@@ -61,15 +61,16 @@ done
 # Модель передаётся только при явном выборе вызывающего агента. Адаптер не
 # назначает и не подменяет конструктивную реализацию напарника.
 
-# WP-394 Ф2.4: --exclude-dynamic-system-prompt-sections moves per-machine sections
-# (cwd, env, memory paths, git status) from system prompt to first user message.
-# → stable byte-identical prefix across turns → higher cross-turn prompt-cache reuse.
-# Only applies with default system prompt (no --system-prompt passed here).
+# WP-510 Ф17: text-only must be fail-closed. `plan` plus a deny-list did not
+# provide that boundary: Claude could still call Agent, whose child discovered
+# ToolSearch and MCP, then the parent timed out without stdout. `--safe-mode`
+# removes project customizations/hooks/MCP, while the EMPTY `--tools` allow-list
+# disables every tool namespace (including future tools not known today).
+# `--no-session-persistence` prevents this ephemeral reviewer from leaving a
+# resumable conversation. --add-dir remains forbidden above.
 #
-# `plan` plus an explicit deny-list makes the peer a text-only reviewer at the
-# Claude Code tool-policy layer. --add-dir expands file access and must never be
-# used as a claimed sandbox. Sensitive material still requires an OS-level
-# isolated runner; this adapter is not such a runner.
+# This is still a Claude Code policy boundary, not an OS sandbox. Sensitive
+# material requires a separately isolated runner and explicit pilot approval.
 #
 # perl alarm 300: 5-minute hard timeout, same as kimi-peer-adapter.sh.
 # On timeout: SIGALRM → exit 142 → caller sees exit≠0 + empty file → reports to pilot.
@@ -78,10 +79,11 @@ trap 'rm -f "$CLAUDE_STDERR"' EXIT
 
 CLAUDE_OUTPUT=$(perl -e 'alarm 300; exec @ARGV' -- \
   "$CLAUDE_BIN" -p \
-  --exclude-dynamic-system-prompt-sections \
-  --permission-mode plan \
+  --safe-mode \
+  --tools "" \
+  --permission-mode dontAsk \
   --max-turns 1 \
-  --disallowedTools "Read,Edit,Write,Bash,Glob,Grep,WebFetch,WebSearch" \
+  --no-session-persistence \
   ${MODEL_ARG[@]+"${MODEL_ARG[@]}"} \
   "$@" 2>"$CLAUDE_STDERR") && CLAUDE_EXIT=0 || CLAUDE_EXIT=$?
 

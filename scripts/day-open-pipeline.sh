@@ -13,7 +13,14 @@
 
 set -uo pipefail
 
-IWE="${IWE_ROOT:-$HOME/IWE}"
+# A promoted runtime copy can set IWE_WORKSPACE via ~/.iwe-paths. Resolve it through
+# the shared library instead of silently falling back to IWE_ROOT-only behavior.
+# shellcheck source=lib/common.sh
+_PIPELINE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+[ -f "$_PIPELINE_LIB" ] || { echo "ОШИБКА: не найден $_PIPELINE_LIB" >&2; exit 1; }
+source "$_PIPELINE_LIB"
+
+IWE="$(iwe_resolve_root)"
 CONFIG="$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/exocortex/day-rhythm-config.yaml"
 # shellcheck source=lib/ledger-path.sh
 . "$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/lib/ledger-path.sh"

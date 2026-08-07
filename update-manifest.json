@@ -1,5 +1,5 @@
 {
-  "version": "0.36.3",
+  "version": "0.38.0",
   "description": "Манифест платформенных файлов FMT-exocortex-template. Используется update.sh для доставки обновлений.",
   "files": [
     {
@@ -1264,6 +1264,9 @@
     },
     {
       "path": "scripts/active-wp-sweep.sh"
+    },
+    {
+      "path": "scripts/add-secret.sh"
     },
     {
       "path": "scripts/add-skill-markers.sh"

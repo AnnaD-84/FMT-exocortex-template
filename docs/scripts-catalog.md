@@ -1,11 +1,12 @@
 # Каталог скриптов IWE
 
-> Автогенерировано `scripts/generate-catalogs.py` · 2026-08-04 · НЕ редактировать вручную.
+> Автогенерировано `scripts/generate-catalogs.py` · 2026-08-06 · НЕ редактировать вручную.
 > Источник: `scripts/*.sh`, `.claude/scripts/*.{sh,py}`. Это вспомогательные скрипты (хелперы, утилиты, серверы), не скиллы.
 
 | Скрипт | Путь | Что делает |
 |--------|------|------------|
 | `active-wp-sweep.sh` | `scripts/active-wp-sweep.sh` | heartbeat sweep активных РП |
+| `add-secret.sh` | `scripts/add-secret.sh` | единый способ сохранить любой API-ключ/токен в ~/.secrets/ |
 | `add-skill-markers.sh` | `scripts/add-skill-markers.sh` | inject empty USER-SPACE block into L1 SKILL.md files that lack it. |
 | `agent-heartbeat.sh` | `scripts/agent-heartbeat.sh` | agent-heartbeat.sh |
 | `agent-status-report.sh` | `scripts/agent-status-report.sh` | РП-395 Ф3 fail-safe writer. |
@@ -111,5 +112,5 @@
 | `wp-sync-bundle.sh` | `.claude/scripts/wp-sync-bundle.sh` | детерминированный bundler контекста РП для sync-фазы WP Gate |
 | `wp499-agent-coordination-test.sh` | `scripts/wp499-agent-coordination-test.sh` | Воспроизводимый координационный тест N агентов IWE (WP-499 Ф7/Ф11, расширен Ф17 п.3-4, |
 
-_Всего скриптов: 105_
+_Всего скриптов: 106_
 

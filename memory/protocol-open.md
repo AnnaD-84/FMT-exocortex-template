@@ -5,7 +5,7 @@ type: protocol
 horizon: warm
 domains: [protocol]
 status: active
-owner: user
+owner: platform
 schema_version: 1
 name: "Протокол: open"
 description: "Протокол ОРЗ — пошаговые инструкции для ритуала"

@@ -550,20 +550,26 @@ if [ "$CMD" = "close" ]; then
     fail "ORZ не прошёл валидацию. Исправь замечания выше и повтори close. Семафор остаётся активным." 5
   fi
 
-  # Quick Close — не текстовая декларация: именно терминальная карточка раннера
-  # доказывает, что эта сессия прошла обязательный процесс. Сопоставление по slug
-  # не даёт чужой параллельной карточке закрыть текущую сессию.
-  RUNNER_CARD="$IWE_ROOT/$GOV_REPO/inbox/agent/tasks/RUN-quick-close-${SLUG}"'*.md'
-  RUNNER_OK=""
-  for card in $RUNNER_CARD; do
-    [ -f "$card" ] || continue
-    grep -q '^process_id: quick-close$' "$card" || continue
-    grep -q '^status: completed$' "$card" || continue
-    RUNNER_OK="$card"
-    break
-  done
-  if [ -z "$RUNNER_OK" ]; then
-    fail "Quick Close не завершён для slug '$SLUG': нет terminal RUN-quick-close-${SLUG}*.md. Сначала запусти process-runner.py start quick-close с тем же --slug." 7
+  # issue #356: the public template does not ship process-runner.py or its graph.
+  # Enforce the terminal card only in installations where the complete runner is
+  # actually available. The manual fallback is visible rather than a silent bypass.
+  PROCESS_RUNNER="$IWE_ROOT/$GOV_REPO/scripts/process-runner.py"
+  QUICK_CLOSE_GRAPH="$IWE_ROOT/$GOV_REPO/scripts/processes/quick-close.yaml"
+  if [ -f "$PROCESS_RUNNER" ] && [ -f "$QUICK_CLOSE_GRAPH" ]; then
+    RUNNER_CARD="$IWE_ROOT/$GOV_REPO/inbox/agent/tasks/RUN-quick-close-${SLUG}"'*.md'
+    RUNNER_OK=""
+    for card in $RUNNER_CARD; do
+      [ -f "$card" ] || continue
+      grep -q '^process_id: quick-close$' "$card" || continue
+      grep -q '^status: completed$' "$card" || continue
+      RUNNER_OK="$card"
+      break
+    done
+    if [ -z "$RUNNER_OK" ]; then
+      fail "Quick Close не завершён для slug '$SLUG': нет terminal RUN-quick-close-${SLUG}*.md. Сначала запусти process-runner.py start quick-close с тем же --slug." 7
+    fi
+  else
+    echo "Session CLOSE: runner_check=not_applicable (process-runner.py или quick-close.yaml не установлен); карточка не требуется, действует ручной режим протокола"
   fi
 
   # agent status idle
@@ -784,6 +790,69 @@ if [ "$CMD" = "audit" ]; then
   exit 0
 fi
 
+# --- RECOVER-ORPHANED (WP-484 Ф49, contract designed 04.08 peer-session
+# 2026-08-04-13-session-ttl-f47-draft, ход 1: Codex В4) ---
+# Карантинный файл — уже честная терминальная запись места, где сессия
+# застряла; переименование обратно в `.open` имитировало бы штатное
+# закрытие, которого не было (явно запрещено в записи Ф49). recover-orphaned
+# вместо этого пишет отдельное ledger-событие и метит файл — сам файл
+# карантина остаётся на диске как есть, историю не переписываем.
+if [ "$CMD" = "recover-orphaned" ]; then
+  ORPHAN_ARG="${POSITIONAL[0]:-}"
+  [ -z "$ORPHAN_ARG" ] && fail "recover-orphaned: missing path argument" 1
+  case "$ORPHAN_ARG" in
+    /*) ORPHAN_FILE="$ORPHAN_ARG" ;;
+    *)  ORPHAN_FILE="$SESSION_DIR/$ORPHAN_ARG" ;;
+  esac
+  [ -f "$ORPHAN_FILE" ] || fail "recover-orphaned: файл не найден: $ORPHAN_FILE" 1
+  # Review post-consensus (одноразовый verification-запрос Codex, 04.08): команда
+  # принимала любой путь на диске с подходящим именем — не ослабляет Scope gate
+  # (.recovered не даёт прав коммита), но лишняя способность переименовывать файлы
+  # вне каталога семафоров. Канонизируем и запираем в $SESSION_DIR, отклоняем
+  # symlink и повторный вызов на уже восстановленном файле.
+  CANON_FILE=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$ORPHAN_FILE")
+  CANON_DIR=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$SESSION_DIR")
+  case "$CANON_FILE" in
+    "$CANON_DIR"/*) : ;;
+    *) fail "recover-orphaned: '$ORPHAN_FILE' вне каталога семафоров ($SESSION_DIR)" 1 ;;
+  esac
+  [ -L "$ORPHAN_FILE" ] && fail "recover-orphaned: '$ORPHAN_FILE' — символическая ссылка, не карантинный файл" 1
+  case "$(basename "$CANON_FILE")" in
+    *.recovered) fail "recover-orphaned: '$(basename "$CANON_FILE")' уже восстановлен" 1 ;;
+    *.orphaned-*) : ;;
+    *) fail "recover-orphaned: '$(basename "$CANON_FILE")' не похож на карантинный семафор (ожидается суффикс .orphaned-*)" 1 ;;
+  esac
+  grep -qE '^(agent|opened_at|session_id): ' "$ORPHAN_FILE" || \
+    fail "recover-orphaned: '$(basename "$CANON_FILE")' не похож на семафор session-guard (нет полей agent:/opened_at:/session_id:)" 1
+
+  REASON=$(basename "$ORPHAN_FILE" | sed -n 's/.*\.orphaned-//p')
+  REC_WP=$(grep "^wp: " "$ORPHAN_FILE" | cut -d' ' -f2- || true)
+  REC_SLUG=$(grep "^slug: " "$ORPHAN_FILE" | cut -d' ' -f2- || true)
+  REC_SID=$(grep "^session_id: " "$ORPHAN_FILE" | cut -d' ' -f2- || echo unknown)
+  REC_PATH=$(python3 -c "import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))" "$ORPHAN_FILE" "$IWE_ROOT")
+
+  EVENT_JSON=$(python3 -c '
+import json, sys
+print(json.dumps({
+    "original_path": sys.argv[1],
+    "quarantine_reason": sys.argv[2],
+    "wp": sys.argv[3] or "unknown",
+    "slug": sys.argv[4] or "unknown",
+    "session_id": sys.argv[5],
+}))
+' "$REC_PATH" "$REASON" "${REC_WP:-}" "${REC_SLUG:-}" "$REC_SID")
+
+  # mv ДО ledger-append (не наоборот, review post-consensus Codex): если mv
+  # упадёт — ничего не залогировано, retry безопасен. Если бы ledger писался
+  # первым и упал mv — retry на уже-переименованном файле молча дал бы
+  # дубликат события; здесь повтор просто упрётся в проверку *.recovered выше.
+  mv "$ORPHAN_FILE" "${ORPHAN_FILE}.recovered"
+  bash "$IWE_ROOT/$GOV_REPO/scripts/ledger-append.sh" day "$(now_date)" session_recovered_closed "$EVENT_JSON" session-guard
+
+  echo "Recovered: $(basename "$ORPHAN_FILE") — файл помечен .recovered, session_recovered_closed записан в ledger ($REC_PATH, wp=${REC_WP:-unknown}, session_id=$REC_SID). Исходный карантинный файл НЕ возвращён в .open — это честная терминальная запись, не имитация штатного закрытия."
+  exit 0
+fi
+
 # --- GIT PRE-COMMIT CHECK ---
 if [ "$CMD" = "pre-commit-check" ]; then
   # WP-484 Ф49: право разрешать коммит истекает по аренде и отзывается у ВСЕГО
@@ -934,4 +1003,4 @@ EOF
   exit 0
 fi
 
-fail "Unknown command: $CMD (use: open, close, audit, renew, note-file, pre-commit-check)"
+fail "Unknown command: $CMD (use: open, close, audit, renew, note-file, recover-orphaned, pre-commit-check)"

@@ -173,6 +173,52 @@ is_author_mode() {
     grep -qE '^author_mode:[[:space:]]*true' "$params_file"
 }
 
+# issue #354: these four files are platform protocols, but older template releases
+# shipped them as owner:user. That legacy marker must not permanently block future
+# platform fixes. Keep the allowlist exact: every other owner:user memory file remains
+# protected by issue #229.
+is_platform_protocol_path() {
+    case "$1" in
+        memory/protocol-open.md|memory/protocol-work.md|memory/protocol-close.md|memory/protocol-month-close.md) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# One-time owner:user -> owner:platform migration. The owner marker in the deployed
+# copy is the idempotency marker: after a successful copy this branch is no longer
+# eligible. Preserve the user's previous version before replacing it, and fail closed
+# if the backup cannot be written. author_mode stays protected because its live memory
+# copy can be the author's unpublished source.
+migrate_platform_protocol() {
+    local fpath="$1" target="$2" source backup
+    source="$SCRIPT_DIR/$fpath"
+
+    is_platform_protocol_path "$fpath" || return 1
+    [ -f "$source" ] && [ -f "$target" ] || return 1
+    [ "$(get_field "$source" owner)" = "platform" ] || return 1
+    [ "$(get_field "$target" owner)" = "user" ] || return 1
+
+    if is_author_mode; then
+        echo "  ⚠ $fpath — author_mode: legacy owner:user copy not migrated. Сверь: diff \"$source\" \"$target\""
+        return 1
+    fi
+
+    backup="$WORKSPACE_DIR/.backups/protocol-owner-migration/${fpath#memory/}"
+    if [ ! -f "$backup" ]; then
+        mkdir -p "$(dirname "$backup")"
+        if ! cp -p "$target" "$backup"; then
+            echo "  ⚠ $fpath — миграция пропущена: не удалось сохранить $backup" >&2
+            return 1
+        fi
+    fi
+    if ! cp "$source" "$target"; then
+        echo "  ⚠ $fpath — миграция пропущена: не удалось обновить рабочую копию" >&2
+        return 1
+    fi
+    echo "  ⟲ $fpath → memory/ (owner:user → platform; прежняя версия: $backup)"
+    return 0
+}
+
 # author_diverged FPATH — author_mode: SCRIPT_DIR — git-клон этого самого шаблона,
 # из которого качается upstream. Git — точный арбитр «locally stale vs автор доработал»,
 # не список защищённых путей (issue #238, тот же класс бага, что стёр 66 файлов —
@@ -388,7 +434,9 @@ repair_pass() {
                         echo "  ⟲ $fpath → memory/ (repair)"
                         REPAIRED=$((REPAIRED + 1))
                     elif [ -r "$mem_dst" ] && [ "$(get_field "$mem_dst" owner)" = "user" ]; then
-                        : # issue #229: owner: user в frontmatter — пилот владеет файлом, stale-repair не применяется никогда
+                        if migrate_platform_protocol "$fpath" "$mem_dst"; then
+                            REPAIRED=$((REPAIRED + 1))
+                        fi
                     elif is_personal_config "$fname"; then
                         : # личный L4-конфиг без frontmatter (day-rhythm-config.yaml) — НЕ stale-repair
                     elif is_author_mode; then
@@ -1199,7 +1247,11 @@ if [ -d "$CLAUDE_MEMORY_DIR" ]; then
                     # every update.sh call (not just repair), so it's the more common path
                     # that was clobbering user-owned memory files.
                     if [ -f "$dst" ] && [ "$(get_field "$dst" owner)" = "user" ]; then
-                        echo "  ✓ $fname — owner: user, не перезаписан"
+                        if migrate_platform_protocol "$f" "$dst"; then
+                            MEM_UPDATED=$((MEM_UPDATED + 1))
+                        elif ! is_platform_protocol_path "$f"; then
+                            echo "  ✓ $fname — owner: user, не перезаписан"
+                        fi
                     elif is_personal_config "$fname" && [ -f "$dst" ]; then
                         echo "  ✓ $fname — личный L4-конфиг, не перезаписан"
                     elif is_author_mode && [ -f "$dst" ]; then
@@ -1504,10 +1556,11 @@ fi
 # These may be stale user customisations or files left over from a renamed skill.
 # Never auto-deletes; always informational only.
 if command -v python3 &>/dev/null && [ -f "$SCRIPT_DIR/update-manifest.json" ]; then
-    ORPHAN_OUTPUT=$(python3 - <<'PYEOF'
-import json, os
+    ORPHAN_OUTPUT=""
+    if ! ORPHAN_OUTPUT=$(python3 - "$SCRIPT_DIR" 2>&1 <<'PYEOF'
+import json, os, sys
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = os.path.realpath(sys.argv[1])
 manifest_path = os.path.join(script_dir, "update-manifest.json")
 
 with open(manifest_path) as f:
@@ -1552,7 +1605,11 @@ for base in L1_DIRS:
 for tag, rel in sorted(orphans):
     print(f"  {tag} {rel}")
 PYEOF
-)
+    ); then
+        echo "  ⚠ Проверка orphan-файлов не выполнена; обновление уже применено и остаётся успешным."
+        echo "$ORPHAN_OUTPUT" | sed 's/^/    /'
+        ORPHAN_OUTPUT=""
+    fi
     if [ -n "$ORPHAN_OUTPUT" ]; then
         echo ""
         echo "⚠  Файлы в L1-директориях не найдены в манифесте (не удалять автоматически):"

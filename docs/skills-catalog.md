@@ -1,6 +1,6 @@
 # Каталог скиллов IWE
 
-> Автогенерировано `scripts/generate-catalogs.py` · 2026-08-04 · НЕ редактировать вручную.
+> Автогенерировано `scripts/generate-catalogs.py` · 2026-08-06 · НЕ редактировать вручную.
 > Источник: `.claude/skills/*/SKILL.md`. Скилл вызывается командой `/<id>`.
 
 | Скилл | Что делает |
@@ -35,7 +35,7 @@
 | `/org-dev` | Organizational Development Manager (R31): guides the subject from an organizational change request (self/team… |
 | `/pack-creator` | Guide a PACK-X author through the SPF fill cycle 01-11. Calls R28 Diagnostician to select mode (assembly/hybr… |
 | `/pack-new` | Create a new Pack — guided flow through SPF: choose domain, name Pack, scaffold structure, fill roadmap. |
-| `/peer-conversation` | Многотуровый диалог писателя (Claude) с напарником (Kimi по умолчанию, Codex — второй вендор) по задаче пилот… |
+| `/peer-conversation` | Многотуровый диалог писателя (Claude) с одним или несколькими напарниками (любой набор из kimi/codex/hermes/c… |
 | `/personal-guide-render` | Персональное руководство пилота собирается автоматически на сервере платформы по расписанию. Используй когда… |
 | `/personal-guide-start` | Bootstrap wrapper — creates an empty personal-guide repo under the pilot's account (flat name, no login in th… |
 | `/platform-bottleneck` | Скилл IWE — см. тело файла |

@@ -115,20 +115,53 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-08-05
+
+
+## [0.38.0] — 2026-08-06
 
 ### Added
 
+- `1af1c2a` feat: promote add-secret.sh from staging (L3 → L1)
+- `53b6238` feat: promote napkin-illustrate.sh from staging (L3 → L1)
+
+### Changed
+
+- `9e3f8a8` chore: complete napkin-illustrate.sh removal — manifest, catalog, promotion log
+- `1e40608` revert: remove napkin-illustrate.sh — wrongly promoted, personal-only tool
+- `dad5755` chore: record napkin-illustrate.sh promotion in promotion-status.yaml
+- `6da8e63` chore: release v0.37.0
+- `e456466` sync(dispatcher): mirror fail-closed security policy
+- `d26bdc7` docs: обновить браузерный вход через стенд МИМ
+- `f2d7218` Merge pull request #358 from TserenTserenov/fix/web-connect-troubleshooting
+- `c91c1ed` docs(onboarding): раздел «Если не подключается» в web-connect-guide
+
+### Fixed
+
+- `3fd0f36` fix: report canonical WP phases in sync bundle
+- `2abb4c5` fix: restore day-open root resolution and seed parity
+- `e099b33` fix: deliver platform protocols and runner fallback (#354 #356)
+- `e28bd04` fix: resolve update and index health regressions (#353 #357)
+
+
+## [0.37.0] — 2026-08-06
+
+### Added
+
+- `53b6238` feat: promote napkin-illustrate.sh from staging (L3 → L1)
+- `5efe7a3` feat: promote day-open-pipeline.sh to platform (proxy-env secret fix, WP-484)
 - `6d1e1e2` feat(wp481): extend verifier acceptance contracts
 - `7a8db41` feat(wp509): promote peer-conversation v1.5.5 to L1
 - `adc5dd8` feat(WP-7/SP1): promote skill kimi-peer-writer to platform (L1)
 - `041bd11` feat: promote day-open-pipeline.sh to platform (WP-7 orphan-semaphore quarantine)
 - `e680497` feat(WP-7 Этап 2): контрактные тесты доведены до реально проходящих + rollback create-wp.sh
 - `7291b9f` feat(WP-7 Этап 2): контрактные тесты с failure injection
-- `d13cb3f` feat(WP-453): post-commit — блок Т1 (скан blobs на [guide-impact])
 
 ### Changed
 
+- `e456466` sync(dispatcher): mirror fail-closed security policy
+- `d26bdc7` docs: обновить браузерный вход через стенд МИМ
+- `f2d7218` Merge pull request #358 from TserenTserenov/fix/web-connect-troubleshooting
+- `c91c1ed` docs(onboarding): раздел «Если не подключается» в web-connect-guide
 - `c529c98` test(T16): диагностика clarity-падения в CI — rc и stderr хука в FAIL-сообщениях
 - `3d96d00` chore: перегенерация каталогов generate-catalogs.py
 - `867aa5d` docs(wp-452): Ф4 — связь с разделом 7 универсального руководства
@@ -137,6 +170,12 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `3fd0f36` fix: report canonical WP phases in sync bundle
+- `2abb4c5` fix: restore day-open root resolution and seed parity
+- `e099b33` fix: deliver platform protocols and runner fallback (#354 #356)
+- `e28bd04` fix: resolve update and index health regressions (#353 #357)
+- `70a9667` fix: protect shared exocortex data and unify decision log
+- `4d39d6f` fix(session-guard): доставить восстановление карантинной сессии
 - `15a38b9` fix(hooks): A10-детектор слеп в C.UTF-8 — кириллический диапазон в grep невалиден
 - `720d30f` fix(#310,#321,#323,#347,#350): честный enforcement гейтов, доставка хуков, аудит промотированных копий
 - `80c4a25` fix(#348): образец params.yaml.example признан пользовательским пространством
@@ -158,7 +197,6 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `3280bef` fix(hindsight): убрать ключ из автозапуска, резолвить docker динамически, curl-healthcheck
 - `7e04b0b` fix(day-close): изоляция кодов возврата реиндексации + различение частичного отказа
 - `8a2e9da` fix(peer): restrict Claude adapter to text-only review
-- `b32160f` fix: добавить регрессионные тесты в update-manifest.json
 
 
 ## [0.36.3] — 2026-08-02
