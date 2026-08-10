@@ -92,13 +92,8 @@ sed_escape_replacement() {
     printf '%s' "$1" | sed -e 's/[\&|]/\\&/g'
 }
 
-# substitute_claude_placeholders SRC DST — копирует SRC в DST с подставленными
-# {{PLACEHOLDER}} (issue #269). setup.sh подставляет их в workspace/CLAUDE.md И
-# в .claude.md.base при установке; update.sh раньше копировал upstream-файл в
-# 3-way merge и в новый .base сырым — плейсхолдер, который апстрим добавил в
-# CLAUDE.md, приезжал нерезолвленным и застревал в merge-base для всех
-# последующих обновлений. Читает .exocortex.env тем же безопасным парсером,
-# что и Step 5b (только простые KEY=VALUE, без source/eval).
+# substitute_claude_placeholders SRC DST — создаёт только workspace-копию.
+# Template repo и его merge-base всегда остаются raw с {{PLACEHOLDER}} (#381).
 substitute_claude_placeholders() {
     local src="$1" dst="$2"
     local env_file=""
@@ -139,6 +134,23 @@ substitute_claude_placeholders() {
         "$dst"
 }
 
+# restore_claude_placeholders SRC DST — миграция форков, которые старый setup
+# загрязнил install-values. Обратная замена точечная: только значения из текущего
+# .exocortex.env, поэтому пользовательская дельта вокруг них сохраняется.
+restore_claude_placeholders() {
+    local src="$1" dst="$2" env_file="" key value escaped
+    [ -f "$WORKSPACE_DIR/.exocortex.env" ] && env_file="$WORKSPACE_DIR/.exocortex.env"
+    [ -z "$env_file" ] && [ -f "$SCRIPT_DIR/.exocortex.env" ] && env_file="$SCRIPT_DIR/.exocortex.env"
+    cp "$src" "$dst"
+    [ -n "$env_file" ] || return 0
+    for key in WORKSPACE_DIR HOME_DIR CLAUDE_PATH IWE_TEMPLATE IWE_RUNTIME; do
+        value=$(grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
+        [ -n "$value" ] || continue
+        escaped=$(printf '%s' "$value" | sed -e 's/[\&|]/\\&/g')
+        sed_inplace "s|${escaped}|{{${key}}}|g" "$dst"
+    done
+}
+
 # Protected user files (issue #154): once seeded, these hold user-authored content
 # (permissions, memory, peer-session journal) — update.sh must never touch them again,
 # neither overwrite (download loop) nor delete (deprecated-file cleanup). Single source
@@ -173,13 +185,16 @@ is_author_mode() {
     grep -qE '^author_mode:[[:space:]]*true' "$params_file"
 }
 
-# issue #354: these four files are platform protocols, but older template releases
-# shipped them as owner:user. That legacy marker must not permanently block future
-# platform fixes. Keep the allowlist exact: every other owner:user memory file remains
-# protected by issue #229.
-is_platform_protocol_path() {
+# issues #354/#384: these files are platform-maintained, but older template releases
+# shipped them as owner:user. Keep the migration allowlist exact: personal style,
+# author distinctions, FPF snapshots and other real user memory stay protected.
+is_migrated_platform_memory_path() {
     case "$1" in
-        memory/protocol-open.md|memory/protocol-work.md|memory/protocol-close.md|memory/protocol-month-close.md) return 0 ;;
+        memory/protocol-open.md|memory/protocol-work.md|memory/protocol-close.md|memory/protocol-month-close.md|\
+        memory/agent-architecture-framework.md|memory/agent-vendor-connect-pattern.md|memory/checklists.md|\
+        memory/dry-run-contract.md|memory/feedback_response_clarity_for_pilot.md|memory/hooks-design.md|\
+        memory/navigation.md|memory/reference/agent-core.md|memory/repo-type-rules.md|memory/roles.md|\
+        memory/r-questionnaire.md|memory/t-checklist.md|memory/templates-dayplan.md) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -189,11 +204,11 @@ is_platform_protocol_path() {
 # eligible. Preserve the user's previous version before replacing it, and fail closed
 # if the backup cannot be written. author_mode stays protected because its live memory
 # copy can be the author's unpublished source.
-migrate_platform_protocol() {
+migrate_platform_memory() {
     local fpath="$1" target="$2" source backup
     source="$SCRIPT_DIR/$fpath"
 
-    is_platform_protocol_path "$fpath" || return 1
+    is_migrated_platform_memory_path "$fpath" || return 1
     [ -f "$source" ] && [ -f "$target" ] || return 1
     [ "$(get_field "$source" owner)" = "platform" ] || return 1
     [ "$(get_field "$target" owner)" = "user" ] || return 1
@@ -216,6 +231,37 @@ migrate_platform_protocol() {
         return 1
     fi
     echo "  ⟲ $fpath → memory/ (owner:user → platform; прежняя версия: $backup)"
+    return 0
+}
+
+# issue #375: owner:user protects the deployed copy from overwrite, but protection
+# must not make upstream drift invisible. Scan the whole manifest on every real
+# update/repair pass, not only NEW_FILES/UPDATED_FILES from this invocation.
+report_owner_user_memory_drift() {
+    local fpath deployed drift_count=0
+    [ -d "$CLAUDE_MEMORY_DIR" ] && [ -f "$MANIFEST" ] || return 0
+    while IFS= read -r fpath; do
+        [ -n "$fpath" ] || continue
+        is_migrated_platform_memory_path "$fpath" && continue
+        deployed="$CLAUDE_MEMORY_DIR/${fpath#memory/}"
+        [ -f "$SCRIPT_DIR/$fpath" ] && [ -r "$deployed" ] || continue
+        [ "$(get_field "$deployed" owner)" = "user" ] || continue
+        if [ "$(hash_file "$SCRIPT_DIR/$fpath")" != "$(hash_file "$deployed")" ]; then
+            echo "  ⚠ $fpath — owner: user, НЕ обновлён, но шаблонная версия отличается."
+            echo "    Сверьте: diff \"$SCRIPT_DIR/$fpath\" \"$deployed\""
+            drift_count=$((drift_count + 1))
+        fi
+    done < <(python3 - "$MANIFEST" <<'PY' 2>/dev/null
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    for entry in json.load(handle).get("files", []):
+        path = entry.get("path", "")
+        if path.startswith("memory/"):
+            print(path)
+PY
+    )
+    [ "$drift_count" -eq 0 ] || echo "  ⚠ owner:user memory drift: $drift_count файл(ов), автоматическая перезапись отключена"
     return 0
 }
 
@@ -259,11 +305,102 @@ if [ ! -f "$SCRIPT_DIR/CLAUDE.md" ]; then
 fi
 
 WORKSPACE_DIR="$(dirname "$SCRIPT_DIR")"
+RULES_BACKUP_RUN=""
+RULES_SAFE_TO_UPDATE="|"
+UPDATE_INCOMPLETE_MARKER="$SCRIPT_DIR/.update-incomplete"
+UPDATE_TRANSACTION_STARTED=false
 
-# Claude memory dir — computed once here so both the normal propagation pass
-# (Step 6) and the early repair-pass (see repair_pass() below, issue #226) can use it.
-CLAUDE_PROJECT_SLUG="$(echo "$WORKSPACE_DIR" | tr '/' '-')"
-CLAUDE_MEMORY_DIR="$HOME/.claude/projects/$CLAUDE_PROJECT_SLUG/memory"
+begin_update_transaction() {
+    if [ ! -f "$UPDATE_INCOMPLETE_MARKER" ]; then
+        {
+            echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "local_version=${LOCAL_VERSION:-unknown}"
+            echo "upstream_version=${UPSTREAM_VERSION:-unknown}"
+            echo "state=applying"
+        } > "$UPDATE_INCOMPLETE_MARKER"
+    fi
+    UPDATE_TRANSACTION_STARTED=true
+}
+
+finish_update_transaction() {
+    if [ -f "$UPDATE_INCOMPLETE_MARKER" ]; then
+        rm -f "$UPDATE_INCOMPLETE_MARKER"
+        echo "  ✓ Маркер незавершённого обновления снят."
+    fi
+    UPDATE_TRANSACTION_STARTED=false
+}
+
+record_rule_workspace_state() {
+    local fpath="$1" src dst
+    case "$fpath" in .claude/rules/*) ;; *) return 0 ;; esac
+    src="$SCRIPT_DIR/$fpath"
+    dst="$WORKSPACE_DIR/$fpath"
+    if [ ! -f "$dst" ] || { [ -f "$src" ] && [ "$(hash_file "$src")" = "$(hash_file "$dst")" ]; }; then
+        RULES_SAFE_TO_UPDATE="${RULES_SAFE_TO_UPDATE}${fpath}|"
+    fi
+}
+
+rule_was_safe_to_update() {
+    case "$RULES_SAFE_TO_UPDATE" in *"|$1|"*) return 0 ;; *) return 1 ;; esac
+}
+
+backup_rule_before_overwrite() {
+    local fpath="$1" dst="$2" backup
+    case "$fpath" in .claude/rules/*) ;; *) return 0 ;; esac
+    [ -f "$dst" ] || return 0
+    if [ -z "$RULES_BACKUP_RUN" ]; then
+        RULES_BACKUP_RUN="$WORKSPACE_DIR/.backups/rules-pre-update/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    fi
+    backup="$RULES_BACKUP_RUN/${fpath#.claude/rules/}"
+    mkdir -p "$(dirname "$backup")"
+    cp "$dst" "$backup"
+    echo "  ↳ backup: $dst → $backup"
+}
+
+copy_platform_file_preserving_user_space() {
+    local src="$1" dst="$2" fpath="$3" user_section=""
+    if [ -f "$dst" ]; then
+        case "$fpath" in
+            .claude/rules/*)
+                user_section=$(sed -n '/^<!-- USER-SPACE -->/,/^<!-- \/USER-SPACE -->/p' "$dst" 2>/dev/null || true)
+                if [ "$(hash_file "$src")" != "$(hash_file "$dst")" ] && ! rule_was_safe_to_update "$fpath"; then
+                    backup_rule_before_overwrite "$fpath" "$dst"
+                    echo "  ⚠ $fpath — рабочая копия отличается от прежнего шаблона; пользовательская правка сохранена."
+                    echo "    Сверьте: diff \"$src\" \"$dst\""
+                    return 1
+                fi
+                ;;
+        esac
+        backup_rule_before_overwrite "$fpath" "$dst"
+    fi
+    cp "$src" "$dst"
+    if [ -n "$user_section" ]; then
+        perl -i -0pe 's/^<!-- USER-SPACE -->.*?^<!-- \/USER-SPACE -->//ms' "$dst"
+        perl -i -0pe 's/\n+$/\n/' "$dst"
+        printf '\n%s\n' "$user_section" >> "$dst"
+    fi
+}
+
+resolve_workspace_memory_dir() {
+    local workspace="$1" physical="" computed slug
+    slug=$(printf '%s' "$workspace" | tr '/_.' '-')
+    computed="$HOME/.claude/projects/$slug/memory"
+    if [ -d "$workspace/memory" ]; then
+        physical=$(cd -P "$workspace/memory" 2>/dev/null && pwd -P) || return 1
+    fi
+    if [ -n "$physical" ] && [ -d "$computed" ]; then
+        computed=$(cd -P "$computed" 2>/dev/null && pwd -P) || return 1
+        if [ "$physical" != "$computed" ]; then
+            echo "ОШИБКА: memory target неоднозначен: workspace/memory → $physical, slug target → $computed" >&2
+            return 1
+        fi
+    fi
+    printf '%s\n' "${physical:-$computed}"
+}
+
+# Physical workspace/memory is authoritative; computed Claude slug is only a
+# fallback for a first install without the link (#368).
+CLAUDE_MEMORY_DIR=$(resolve_workspace_memory_dir "$WORKSPACE_DIR") || exit 1
 
 # issue #350: the file lists printed further down cover only the template's own files.
 # A normal run writes to several more places that never appeared in any preview, and
@@ -292,13 +429,28 @@ assert_self_unmutated() {
 
 # === Temp directory ===
 TMPDIR_UPDATE=$(mktemp -d 2>/dev/null || { mkdir -p "/tmp/exocortex-update-$$"; echo "/tmp/exocortex-update-$$"; })
-trap "rm -rf '$TMPDIR_UPDATE'" EXIT
+cleanup_update() {
+    local status=$?
+    rm -rf "$TMPDIR_UPDATE"
+    if [ "$UPDATE_TRANSACTION_STARTED" = true ] && [ "$status" -ne 0 ] && [ -f "$UPDATE_INCOMPLETE_MARKER" ]; then
+        echo "⚠ Обновление завершилось не полностью; маркер сохранён: $UPDATE_INCOMPLETE_MARKER" >&2
+        echo "  Применено файлов шаблона: ${APPLIED:-0} из ${TOTAL_CHANGES:-неизвестно}; рабочие копии могли обновиться частично." >&2
+        echo "  Исправьте причину и перезапустите update.sh." >&2
+    fi
+    return "$status"
+}
+trap cleanup_update EXIT
 
 echo "=========================================="
 echo "  Exocortex Update v$VERSION"
 echo "=========================================="
 echo "  Репо: $SCRIPT_DIR"
 echo ""
+if [ -f "$UPDATE_INCOMPLETE_MARKER" ]; then
+    echo "⚠ Найден маркер незавершённого обновления: $UPDATE_INCOMPLETE_MARKER"
+    echo "  Предыдущий запуск мог применить только часть файлов; успешный повторный запуск снимет маркер."
+    echo ""
+fi
 
 # === Step 0: Self-update (bootstrap) ===
 echo "[0] Проверка update.sh..."
@@ -334,6 +486,33 @@ if ! curl $CURL_BASE_OPTS $_CURL_SSL_OPT -sSfL "$MANIFEST_URL" -o "$MANIFEST" 2>
     echo "  URL: $MANIFEST_URL"
     echo "  Проверьте подключение к интернету."
     exit 1
+fi
+
+# schema v2 binds every delivered path to its content.  This makes --check --fast
+# notice content-only releases and prevents a proxy/CDN mismatch from installing a
+# file that does not belong to the downloaded manifest.
+if command -v python3 >/dev/null 2>&1; then
+    if ! python3 - "$MANIFEST" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    manifest = json.load(handle)
+schema = manifest.get("schema_version", 1)
+if schema >= 2:
+    invalid = [
+        entry.get("path", "<missing path>")
+        for entry in manifest.get("files", [])
+        if not re.fullmatch(r"[0-9a-f]{64}", entry.get("sha256", ""))
+    ]
+    if invalid:
+        raise SystemExit("schema v2: missing/invalid sha256: " + ", ".join(invalid[:5]))
+PY
+    then
+        echo "ОШИБКА: Манифест обновлений повреждён: schema v2 требует sha256 для каждого файла."
+        exit 1
+    fi
 fi
 
 # Parse version from manifest
@@ -434,7 +613,7 @@ repair_pass() {
                         echo "  ⟲ $fpath → memory/ (repair)"
                         REPAIRED=$((REPAIRED + 1))
                     elif [ -r "$mem_dst" ] && [ "$(get_field "$mem_dst" owner)" = "user" ]; then
-                        if migrate_platform_protocol "$fpath" "$mem_dst"; then
+                        if migrate_platform_memory "$fpath" "$mem_dst"; then
                             REPAIRED=$((REPAIRED + 1))
                         fi
                     elif is_personal_config "$fname"; then
@@ -455,17 +634,19 @@ repair_pass() {
                 dst="$WORKSPACE_DIR/$fpath"
                 if [ ! -f "$dst" ]; then
                     mkdir -p "$(dirname "$dst")"
-                    cp "$SCRIPT_DIR/$fpath" "$dst"
-                    case "$fpath" in *.sh) chmod +x "$dst" ;; esac
-                    echo "  ⟲ $fpath → workspace (repair)"
-                    REPAIRED=$((REPAIRED + 1))
+                    if copy_platform_file_preserving_user_space "$SCRIPT_DIR/$fpath" "$dst" "$fpath"; then
+                        case "$fpath" in *.sh) chmod +x "$dst" ;; esac
+                        echo "  ⟲ $fpath → workspace (repair)"
+                        REPAIRED=$((REPAIRED + 1))
+                    fi
                 elif [ -r "$dst" ] && is_author_mode && [ "$(hash_file "$SCRIPT_DIR/$fpath")" != "$(hash_file "$dst")" ]; then
                     echo "  ⚠ $fpath — author_mode: рабочая копия не тронута. Сверь: diff \"$SCRIPT_DIR/$fpath\" \"$dst\""
                 elif [ -r "$dst" ] && [ "$(hash_file "$SCRIPT_DIR/$fpath")" != "$(hash_file "$dst")" ]; then
-                    cp "$SCRIPT_DIR/$fpath" "$dst"
-                    case "$fpath" in *.sh) chmod +x "$dst" ;; esac
-                    echo "  ⟲ $fpath → workspace (stale repair)"
-                    REPAIRED=$((REPAIRED + 1))
+                    if copy_platform_file_preserving_user_space "$SCRIPT_DIR/$fpath" "$dst" "$fpath"; then
+                        case "$fpath" in *.sh) chmod +x "$dst" ;; esac
+                        echo "  ⟲ $fpath → workspace (stale repair)"
+                        REPAIRED=$((REPAIRED + 1))
+                    fi
                 fi
                 ;;
             .claude/settings.json)
@@ -497,6 +678,7 @@ for entry in data.get('files', []):
     if [ "$REPAIRED" -gt 0 ]; then
         echo "  ✓ $REPAIRED runtime-файлов восстановлено"
     fi
+    report_owner_user_memory_drift
     # An explicit success: as a function (unlike the old inline block), this is
     # a plain top-level command at the call site, and its own exit status
     # (not exempted by the && short-circuit rule that saved the old inline code)
@@ -535,7 +717,7 @@ print(len(data.get('files', [])))
 DOWNLOAD_IDX=0
 
 # Parse manifest: extract path and desc for each file entry
-while IFS='|' read -r fpath fdesc; do
+while IFS='|' read -r fpath fdesc expected_hash; do
     [ -z "$fpath" ] && continue
     # Protected user files (issue #154): never overwrite if they already exist locally.
     # The "Не затрагиваются" list below is cosmetic; is_protected_user_file() is the
@@ -558,6 +740,16 @@ while IFS='|' read -r fpath fdesc; do
     if ! curl $CURL_BASE_OPTS $_CURL_SSL_OPT -sSfL "$RAW_BASE/$fpath" -o "$REMOTE_FILE" 2>/dev/null; then
         SKIPPED_DOWNLOAD+=("$fpath")
         continue
+    fi
+
+    if [ -n "$expected_hash" ]; then
+        REMOTE_HASH=$(hash_file "$REMOTE_FILE")
+        if [ "$REMOTE_HASH" != "$expected_hash" ]; then
+            echo "  ⚠ $fpath: sha256 не совпадает с манифестом" >&2
+            SKIPPED_DOWNLOAD+=("$fpath (ошибка целостности)")
+            rm -f "$REMOTE_FILE"
+            continue
+        fi
     fi
 
     if [ ! -f "$SCRIPT_DIR/$fpath" ]; then
@@ -595,7 +787,7 @@ import json, sys
 with open('$MANIFEST') as f:
     data = json.load(f)
 for entry in data.get('files', []):
-    print(entry['path'] + '|' + entry.get('desc', ''))
+    print(entry['path'] + '|' + entry.get('desc', '') + '|' + entry.get('sha256', ''))
 " 2>/dev/null || {
     # Fallback: basic grep parsing if python3 not available
     grep '"path"' "$MANIFEST" | while read -r line; do
@@ -692,18 +884,10 @@ if [ "$TOTAL_CHANGES" -eq 0 ]; then
             if [ "$LOCAL_HASH_BEFORE" != "$REMOTE_HASH" ]; then
                 cp "$MANIFEST" "$SCRIPT_DIR/update-manifest.json" \
                     && echo "  • update-manifest.json: версия синхронизирована (v$UPSTREAM_VERSION)"
-                if is_author_mode; then
-                    git add "$SCRIPT_DIR/update-manifest.json" 2>/dev/null || true
-                else
-                    git add -C "$SCRIPT_DIR" update-manifest.json 2>/dev/null || true
-                fi
-                # pathspec после `--`: коммитить ТОЛЬКО манифест — bare `git commit`
-                # коммитит весь текущий индекс, включая чужое pre-staged (Kimi/Hermes
-                # работают параллельно) под обманчивым "chore: sync..." сообщением.
-                git commit -m "chore: sync update-manifest.json version to v$UPSTREAM_VERSION" --no-verify -- "$SCRIPT_DIR/update-manifest.json" 2>&1 | sed 's/^/  /'
             fi
         fi
     fi
+    finish_update_transaction
     echo "✓ Всё актуально. Обновлений нет. ($UNCHANGED файлов проверено)"
     exit 0
 fi
@@ -785,6 +969,7 @@ fi
 # === Step 5: Apply updates ===
 echo ""
 echo "Применяю обновления..."
+begin_update_transaction
 
 APPLIED=0
 REMOVED=0
@@ -792,6 +977,7 @@ AUTHOR_SKIPPED=0
 APPLIED_PATHS=()
 
 for f in "${NEW_FILES[@]}"; do
+    record_rule_workspace_state "$f"
     if author_diverged "$f"; then
         echo "  ⚠ $f — author_mode: локально изменён/удалён, не восстанавливаю. Сверь: git -C \"$SCRIPT_DIR\" status -- \"$f\""
         AUTHOR_SKIPPED=$((AUTHOR_SKIPPED + 1))
@@ -810,6 +996,7 @@ for f in "${NEW_FILES[@]}"; do
 done
 
 for f in "${UPDATED_FILES[@]}"; do
+    record_rule_workspace_state "$f"
     # issue #238: author_mode-guard ДО всех спецкейсов ниже (CLAUDE.md 3-way merge,
     # SKILL.md USER-SPACE preserve, generic cp) — иначе несмёрженная авторская правка
     # в любом из них та же участь, что уже стёрла 66 файлов (86cf080 закрыл только
@@ -824,17 +1011,21 @@ for f in "${UPDATED_FILES[@]}"; do
     # Special handling for CLAUDE.md: 3-way merge preserving user customizations
     if [ "$f" = "CLAUDE.md" ] && [ -f "$SCRIPT_DIR/$f" ]; then
         BASE_FILE="$SCRIPT_DIR/.claude.md.base"
-        NEW_FILE="$TMPDIR_UPDATE/files/claude-new-substituted.md"
-        substitute_claude_placeholders "$TMPDIR_UPDATE/files/$f" "$NEW_FILE"
+        NEW_FILE="$TMPDIR_UPDATE/files/$f"
         CURRENT_FILE="$SCRIPT_DIR/$f"
 
         if [ -f "$BASE_FILE" ] && command -v git >/dev/null 2>&1; then
-            # 3-way merge: base (last update) + current (user's) + new (upstream)
+            # Migrate any legacy substituted base/current to raw placeholders before
+            # merging. Both persisted template files remain safe for public forks.
+            RAW_BASE_FILE="$TMPDIR_UPDATE/claude-base-raw.md"
+            RAW_CURRENT_FILE="$TMPDIR_UPDATE/claude-current-raw.md"
+            restore_claude_placeholders "$BASE_FILE" "$RAW_BASE_FILE"
+            restore_claude_placeholders "$CURRENT_FILE" "$RAW_CURRENT_FILE"
             # git merge-file modifies the first argument in place
             MERGE_TMP="$TMPDIR_UPDATE/claude-merge.md"
-            cp "$CURRENT_FILE" "$MERGE_TMP"
+            cp "$RAW_CURRENT_FILE" "$MERGE_TMP"
 
-            if git merge-file -p "$MERGE_TMP" "$BASE_FILE" "$NEW_FILE" > "$TMPDIR_UPDATE/claude-merged.md" 2>/dev/null; then
+            if git merge-file -p "$MERGE_TMP" "$RAW_BASE_FILE" "$NEW_FILE" > "$TMPDIR_UPDATE/claude-merged.md" 2>/dev/null; then
                 # Clean merge — no conflicts
                 cp "$TMPDIR_UPDATE/claude-merged.md" "$CURRENT_FILE"
                 cp "$NEW_FILE" "$BASE_FILE"
@@ -1162,19 +1353,16 @@ CLAUDE_UPDATED=false
 # ЭТОМ прогоне: закрывает и обрыв-и-перезапуск, и любой другой пропуск Step 5.
 NEEDS_WS_CLAUDE_SYNC=false
 if [ -f "$SCRIPT_DIR/CLAUDE.md" ]; then
-    if [ ! -f "$WORKSPACE_DIR/.claude.md.base" ] || ! diff -q "$WORKSPACE_DIR/.claude.md.base" "$SCRIPT_DIR/CLAUDE.md" >/dev/null 2>&1; then
+    WS_NEW="$TMPDIR_UPDATE/ws-claude-new-substituted.md"
+    substitute_claude_placeholders "$SCRIPT_DIR/CLAUDE.md" "$WS_NEW"
+    if [ ! -f "$WORKSPACE_DIR/.claude.md.base" ] || ! diff -q "$WORKSPACE_DIR/.claude.md.base" "$WS_NEW" >/dev/null 2>&1; then
         NEEDS_WS_CLAUDE_SYNC=true
     fi
 fi
 if [ "$NEEDS_WS_CLAUDE_SYNC" = "true" ]; then
     # 3-way merge for workspace CLAUDE.md (same logic as repo copy)
-    # WS_NEW уже подставлен (issue #269) — Step 5 выше записал substituted-версию
-    # в $SCRIPT_DIR/CLAUDE.md через substitute_claude_placeholders(); повторный
-    # вызов здесь не нужен и был бы избыточен. Это зависимость от порядка
-    # выполнения циклов, не самодостаточный код — не переставлять Step 5/6 местами.
     WS_BASE="$WORKSPACE_DIR/.claude.md.base"
     WS_CURRENT="$WORKSPACE_DIR/CLAUDE.md"
-    WS_NEW="$SCRIPT_DIR/CLAUDE.md"
 
     if [ -f "$WS_BASE" ] && [ -f "$WS_CURRENT" ] && command -v git >/dev/null 2>&1; then
         WS_MERGE_TMP="$TMPDIR_UPDATE/ws-claude-merge.md"
@@ -1247,10 +1435,8 @@ if [ -d "$CLAUDE_MEMORY_DIR" ]; then
                     # every update.sh call (not just repair), so it's the more common path
                     # that was clobbering user-owned memory files.
                     if [ -f "$dst" ] && [ "$(get_field "$dst" owner)" = "user" ]; then
-                        if migrate_platform_protocol "$f" "$dst"; then
+                        if migrate_platform_memory "$f" "$dst"; then
                             MEM_UPDATED=$((MEM_UPDATED + 1))
-                        elif ! is_platform_protocol_path "$f"; then
-                            echo "  ✓ $fname — owner: user, не перезаписан"
                         fi
                     elif is_personal_config "$fname" && [ -f "$dst" ]; then
                         echo "  ✓ $fname — личный L4-конфиг, не перезаписан"
@@ -1325,8 +1511,9 @@ for f in "${NEW_FILES[@]}" "${UPDATED_FILES[@]}"; do
                 continue
             fi
             mkdir -p "$(dirname "$dst")"
-            cp "$src" "$dst"
-            echo "  ✓ $f → workspace"
+            if copy_platform_file_preserving_user_space "$src" "$dst" "$f"; then
+                echo "  ✓ $f → workspace"
+            fi
             ;;
         .claude/settings.json)
             # See repair_pass() comment above (bug-2026-07-11) — never blind-overwrite,
@@ -1375,38 +1562,6 @@ if [ -d "$CLAUDE_MEMORY_DIR" ]; then
 fi
 
 # (Step 6b removed — repo rename no longer supported, no link migration needed)
-
-# === Step 6b2: Ensure ~/.iwe-paths exists (WP-219, DP.FM.009) ===
-# Lookup-слой env-переменных для путей к скриптам. Генерируется setup.sh,
-# но при обновлении со старой версии (до WP-219) файл может отсутствовать.
-IWE_PATHS_FILE="$HOME/.iwe-paths"
-ZSHENV_FILE="$HOME/.zshenv"
-if [ ! -f "$IWE_PATHS_FILE" ]; then
-    cat > "$IWE_PATHS_FILE" <<IWEPATHS_EOF
-# IWE environment variables
-# Generated by update.sh (WP-219 migration). Rerun setup.sh or update.sh to regenerate.
-# Do not edit manually — changes will be lost.
-
-export IWE_WORKSPACE="$WORKSPACE_DIR"
-export IWE_TEMPLATE="\$IWE_WORKSPACE/FMT-exocortex-template"
-export IWE_SCRIPTS="\$IWE_TEMPLATE/scripts"
-export IWE_ROLES="\$IWE_TEMPLATE/roles"
-IWEPATHS_EOF
-    echo "  ✓ Миграция WP-219: создан $IWE_PATHS_FILE"
-
-    # Ensure ~/.zshenv sources ~/.iwe-paths (idempotent)
-    if [ -f "$ZSHENV_FILE" ] && grep -qF '.iwe-paths' "$ZSHENV_FILE"; then
-        : # already present
-    else
-        cat >> "$ZSHENV_FILE" <<'ZSHENV_EOF'
-
-# IWE environment (WP-219, DP.FM.009): lookup-слой для путей к скриптам
-[ -f "$HOME/.iwe-paths" ] && source "$HOME/.iwe-paths"
-ZSHENV_EOF
-        echo "  ✓ Миграция WP-219: $ZSHENV_FILE → sources \$HOME/.iwe-paths"
-        echo "  ℹ  Перезапустите shell: source $ZSHENV_FILE"
-    fi
-fi
 
 MCP_TEMPLATE="$SCRIPT_DIR/.mcp.json"
 MCP_WORKSPACE="$WORKSPACE_DIR/.mcp.json"
@@ -1527,16 +1682,15 @@ if $ROLES_CHANGED && command -v launchctl >/dev/null 2>&1; then
 fi
 
 # === Step 6d2: Regenerate hot-files.list (issue #294/#291) ===
-# hot-files.list ships pre-baked with the author's GOVERNANCE_REPO name; regenerate
-# so verify-context-budget.sh resolves the governance CLAUDE.md on THIS install
-# (script reads GOVERNANCE_REPO from $WORKSPACE_DIR/.exocortex.env itself).
+# Keep the shipped scripts/hot-files.list neutral. The generator writes the
+# install-specific governance path under .iwe-runtime (#388).
 if [ -f "$SCRIPT_DIR/scripts/generate-hot-files-list.sh" ]; then
     if $CHECK_ONLY; then
-        echo "  [CHECK] Would regenerate hot-files.list (bash $SCRIPT_DIR/scripts/generate-hot-files-list.sh)"
+        echo "  [CHECK] Would regenerate .iwe-runtime/hot-files.list (bash $SCRIPT_DIR/scripts/generate-hot-files-list.sh)"
     else
         HOTFILES_OUTPUT=$(IWE_ROOT="$WORKSPACE_DIR" bash "$SCRIPT_DIR/scripts/generate-hot-files-list.sh" 2>&1) && \
             echo "$HOTFILES_OUTPUT" | sed 's/^/  /' || \
-            { echo "$HOTFILES_OUTPUT" | sed 's/^/  /'; echo "  ⚠ hot-files.list не пересобран — запусти вручную: bash $SCRIPT_DIR/scripts/generate-hot-files-list.sh"; }
+            { echo "$HOTFILES_OUTPUT" | sed 's/^/  /'; echo "  ⚠ .iwe-runtime/hot-files.list не пересобран — запусти вручную: bash $SCRIPT_DIR/scripts/generate-hot-files-list.sh"; }
     fi
 fi
 
@@ -1548,6 +1702,7 @@ fi
 if [ -f "$MANIFEST" ]; then
     cp "$MANIFEST" "$SCRIPT_DIR/update-manifest.json" \
         && echo "  • update-manifest.json: заменён remote manifest (v$UPSTREAM_VERSION)"
+    APPLIED_PATHS+=("update-manifest.json")
 fi
 
 # === Step 6f: Orphan detection — L1 files not in manifest ===
@@ -1620,47 +1775,61 @@ PYEOF
     fi
 fi
 
-# === Step 7: Commit changes ===
+# === Step 7: Validate applied changes ===
 echo ""
-echo "Фиксация изменений..."
-cd "$SCRIPT_DIR"
+echo "Проверка применённых изменений..."
 
-# issue #226: если HEAD стоит не на дефолтной ветке (например, контрибьютор оставил
-# чекаут на PR-ветке после предыдущей работы), автокоммит обновления загрязнит эту
-# ветку. Предупредить и, без явного согласия, коммит пропустить.
-CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
-SKIP_COMMIT=false
-if [ -n "$CURRENT_BRANCH" ] && [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
-    echo "⚠ Текущая ветка репозитория — '$CURRENT_BRANCH', не '$BRANCH'."
-    echo "  Коммит обновления попадёт в неё и может загрязнить открытый PR."
-    if $AUTO_YES; then
-        echo "  Коммит пропущен (--yes на нестандартной ветке)."
-        echo "  Переключитесь на '$BRANCH' и запустите update.sh снова, либо закоммитьте вручную."
-        SKIP_COMMIT=true
-    else
-        read -p "  Всё равно закоммитить в '$CURRENT_BRANCH'? (y/n) " -n 1 -r
-        echo ""
-        [[ $REPLY =~ ^[Yy]$ ]] || SKIP_COMMIT=true
-    fi
-fi
+validate_no_install_values_in_applied_additions() {
+    local env_file="$WORKSPACE_DIR/.exocortex.env" key value failed=0 fpath applied_additions i
+    local -a install_keys=() install_values=()
+    [ -f "$env_file" ] || return 0
+    [ "${#APPLIED_PATHS[@]}" -gt 0 ] || return 0
 
-if ! $SKIP_COMMIT; then
-    if ! git diff --quiet 2>/dev/null || [ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]; then
-        if is_author_mode; then
-            # issue #238: стейджить только реально применённые файлы update.sh (APPLIED_PATHS),
-            # иначе незапромоченные авторские правки в SCRIPT_DIR попадут в коммит
-            # «chore: update» с неверной атрибуцией (выглядит как часть update, а не авторская работа).
-            for fpath in "${APPLIED_PATHS[@]}"; do
-                git add "$fpath" 2>/dev/null || true
-            done
+    for key in WORKSPACE_DIR HOME_DIR CLAUDE_PATH IWE_TEMPLATE IWE_RUNTIME; do
+        value=$(grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | sed -E 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
+        [ -n "$value" ] || continue
+        install_keys+=("$key")
+        install_values+=("$value")
+    done
+
+    # Guard only files handled by this update. Tracked paths use working-tree
+    # additions; a newly delivered untracked file is scanned in full. No staging is
+    # needed: update.sh must not mutate the user's index or create local commits (#386).
+    for fpath in "${APPLIED_PATHS[@]}"; do
+        if git -C "$SCRIPT_DIR" ls-files --error-unmatch -- "$fpath" >/dev/null 2>&1; then
+            applied_additions=$(git -C "$SCRIPT_DIR" diff --no-color --no-ext-diff --no-textconv --unified=0 -- "$fpath" |
+                awk '
+                    /^diff --git / { in_hunk=0; next }
+                    /^@@ / { in_hunk=1; next }
+                    in_hunk && /^\+/ { print substr($0, 2) }
+                ')
+        elif [ -f "$SCRIPT_DIR/$fpath" ]; then
+            applied_additions=$(sed -n 'p' "$SCRIPT_DIR/$fpath")
         else
-            git add -A
+            continue
         fi
-        git commit -m "chore: update from upstream template v$UPSTREAM_VERSION" --no-verify 2>&1 | sed 's/^/  /'
-        echo "  ✓ Изменения закоммичены"
-    else
-        echo "  Нет изменений для коммита"
-    fi
+        [ -n "$applied_additions" ] || continue
+
+        for i in "${!install_keys[@]}"; do
+            if grep -Fq -- "${install_values[$i]}" <<<"$applied_additions"; then
+                echo "  ✗ install-value ${install_keys[$i]} найден в добавленных строках обновления:" >&2
+                printf '    %s\n' "$fpath" >&2
+                failed=1
+            fi
+        done
+    done
+    [ "$failed" -eq 0 ]
+}
+
+if ! validate_no_install_values_in_applied_additions; then
+    echo "  ОШИБКА: обновление остановлено, чтобы не оставить install paths в шаблоне." >&2
+    exit 1
+fi
+if [ "${#APPLIED_PATHS[@]}" -gt 0 ]; then
+    echo "  ✓ Установочные пути не попали в применённые строки."
+    echo "  ℹ Изменения оставлены незакоммиченными: проверьте их и синхронизируйте форк через git."
+else
+    echo "  Нет изменений шаблона для проверки."
 fi
 
 # === Step 7.5: Migration hint — initial-marker для old clones (0.28.5+) ===
@@ -1734,3 +1903,5 @@ fi
 if $CLAUDE_CONFLICT_DETECTED || [ "${#CLAUDE_BASE_MISSING_FILES[@]}" -gt 0 ]; then
     exit "$EXIT_CONFLICT"
 fi
+
+finish_update_transaction

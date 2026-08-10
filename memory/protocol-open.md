@@ -31,8 +31,10 @@ description: "Протокол ОРЗ — пошаговые инструкци�
 > **Пропустить (перейти к WP Gate):** свободный текст без явного тега — сначала нужно определить РП.
 
 ```bash
-IWE_EXECUTOR_CATALOG={{WORKSPACE_DIR}}/DS-strategy/scripts/executor-catalog.yaml \
-bash {{WORKSPACE_DIR}}/scripts/route-task.sh --skill <skill-name>
+: "${IWE_WORKSPACE:?source .iwe-paths before protocol-open}"
+: "${IWE_SCRIPTS:?source .iwe-paths before protocol-open}"
+IWE_EXECUTOR_CATALOG="$IWE_WORKSPACE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/executor-catalog.yaml" \
+bash "$IWE_SCRIPTS/route-task.sh" --skill <skill-name>
 ```
 **Если тег задан** → Маршрутизатор находит `executor` в executor-catalog.yaml → запускает нужный путь:
 - `executor: script` → прямой вызов script_path (без LLM); `haiku|sonnet|opus` → передать задание нужной модели через SKILL.md; `mcp-direct` → вызов MCP-инструмента напрямую

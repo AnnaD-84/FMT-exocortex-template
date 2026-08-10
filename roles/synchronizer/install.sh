@@ -50,6 +50,10 @@ fi
 # Skip on non-macOS or headless CI without launchctl
 if ! command -v launchctl >/dev/null 2>&1; then
     if [[ "$(uname -s)" == "Linux" ]]; then
+        if [ -n "${SETUP_CI:-}" ]; then
+            echo "  ⊠ SETUP_CI: systemd activation skipped for $ROLE_NAME"
+            exit 0
+        fi
         echo "Installing $ROLE_NAME systemd user service (Linux)..."
         SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 
@@ -108,7 +112,11 @@ mkdir -p "$HOME/logs/synchronizer"
 
 # Копируем и загружаем
 cp "$PLIST_SRC" "$PLIST_DST"
-launchctl load "$PLIST_DST"
+if [ -z "${SETUP_CI:-}" ]; then
+    launchctl load "$PLIST_DST"
+else
+    echo "  ⊠ SETUP_CI: plist copied, launchctl activation skipped"
+fi
 
 echo "  ✓ Installed: com.exocortex.scheduler"
 echo "  ✓ Schedule: 10 dispatch points per day"

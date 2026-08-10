@@ -44,6 +44,10 @@ done
 # Skip on non-macOS or headless CI without launchctl
 if ! command -v launchctl >/dev/null 2>&1; then
     if [[ "$(uname -s)" == "Linux" ]]; then
+        if [ -n "${SETUP_CI:-}" ]; then
+            echo "  ⊠ SETUP_CI: systemd activation skipped for $ROLE_NAME"
+            exit 0
+        fi
         echo "Installing $ROLE_NAME systemd user services (Linux)..."
         SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 
@@ -110,8 +114,14 @@ for label in com.strategist.morning com.strategist.weekreview; do
     fi
     launchctl unload "$TARGET_DIR/$label.plist" 2>/dev/null || true
     cp "$LAUNCHD_DIR/$label.plist" "$TARGET_DIR/"
-    launchctl load "$TARGET_DIR/$label.plist"
+    if [ -z "${SETUP_CI:-}" ]; then
+        launchctl load "$TARGET_DIR/$label.plist"
+    fi
 done
 
-echo "Done. Agents loaded:"
-launchctl list | grep strategist
+if [ -n "${SETUP_CI:-}" ]; then
+    echo "Done. SETUP_CI: plists copied, launchctl activation skipped."
+else
+    echo "Done. Agents loaded:"
+    launchctl list | grep strategist
+fi

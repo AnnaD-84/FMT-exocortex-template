@@ -42,8 +42,20 @@ EXOCORTEX_SRC="$DS_STRATEGY/exocortex"
 # Если в $HOME есть '_' (напр. username john_doe), реальная папка — '-home-john-doe-IWE'.
 # tr '/' '-' дал бы фантом '-home-john_doe-IWE' → restore промахнётся мимо auto-memory.
 # Здесь symlink-резолв непригоден: на новой машине $WORKSPACE_DIR/memory ещё не создан.
-HOME_SLUG=$(echo "$HOME" | tr '/_.' '-')
-MEMORY_DST="${IWE_MEMORY_SRC:-$HOME/.claude/projects/${HOME_SLUG}-IWE/memory}"
+WORKSPACE_SLUG=$(printf '%s' "$WORKSPACE_DIR" | tr '/_.' '-')
+COMPUTED_MEMORY="$HOME/.claude/projects/${WORKSPACE_SLUG}/memory"
+PHYSICAL_MEMORY=""
+if [ -d "$WORKSPACE_DIR/memory" ]; then
+    PHYSICAL_MEMORY=$(cd -P "$WORKSPACE_DIR/memory" 2>/dev/null && pwd -P) || exit 1
+fi
+if [ -n "$PHYSICAL_MEMORY" ] && [ -d "$COMPUTED_MEMORY" ]; then
+    COMPUTED_PHYSICAL=$(cd -P "$COMPUTED_MEMORY" 2>/dev/null && pwd -P) || exit 1
+    if [ "$PHYSICAL_MEMORY" != "$COMPUTED_PHYSICAL" ]; then
+        echo "Неоднозначная memory-конфигурация: workspace/memory → $PHYSICAL_MEMORY, slug target → $COMPUTED_PHYSICAL" >&2
+        exit 1
+    fi
+fi
+MEMORY_DST="${IWE_MEMORY_SRC:-${PHYSICAL_MEMORY:-$COMPUTED_MEMORY}}"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${GREEN}[restore]${NC} $1"; }
@@ -81,7 +93,7 @@ while IFS= read -r f; do
     [ -f "$f" ] || continue
     rel="${f#"$EXOCORTEX_SRC"/}"
     [ "$rel" = "CLAUDE.md" ] && continue   # CLAUDE.md восстанавливается в workspace, не в memory/
-    case "$rel" in extensions/*) continue ;; esac   # extensions/ — отдельный шаг 1b ниже
+    case "$rel" in extensions/*|rules/*) continue ;; esac   # отдельные workspace-шаги ниже
     run "mkdir -p \"$MEMORY_DST/$(dirname "$rel")\""
     run "cp \"$f\" \"$MEMORY_DST/$rel\""
     mem_count=$((mem_count + 1))
@@ -109,6 +121,27 @@ if [ -d "$EXOCORTEX_SRC/extensions" ]; then
     fi
 else
     warn "exocortex/extensions/ отсутствует (бэкап старее фикса #235, или extensions/ был пуст) — пропуск"
+fi
+
+# === Шаг 1c: rules/ → workspace ===
+RULES_DST="$WORKSPACE_DIR/.claude/rules"
+if [ -d "$EXOCORTEX_SRC/rules" ]; then
+    if [ -d "$RULES_DST" ] && [ -n "$(ls -A "$RULES_DST" 2>/dev/null)" ] && ! $FORCE && ! $DRY_RUN; then
+        warn "rules/ уже не пуста: $RULES_DST — пропуск (для восстановления — --force)"
+    else
+        run "mkdir -p \"$RULES_DST\""
+        rules_count=0
+        while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            rel="${f#"$EXOCORTEX_SRC/rules/"}"
+            run "mkdir -p \"$RULES_DST/$(dirname "$rel")\""
+            run "cp \"$f\" \"$RULES_DST/$rel\""
+            rules_count=$((rules_count + 1))
+        done < <(find "$EXOCORTEX_SRC/rules" -type f 2>/dev/null | sort)
+        log "rules-файлов восстановлено: $rules_count"
+    fi
+else
+    warn "exocortex/rules/ отсутствует (старый бэкап) — пропуск"
 fi
 
 # === Шаг 2: CLAUDE.md → workspace root ===

@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-iwe-paths.sh — генерация $HOME/.iwe-paths + sourcing из ~/.zshenv.
+# install-iwe-paths.sh — генерация workspace/.iwe-paths + sourcing из ~/.zshenv.
 #
 # Source-of-truth для IWE_* path-переменных (WP-219, DP.FM.009).
 # Вызывается из:
@@ -49,13 +49,13 @@ fi
 WORKSPACE_DIR="${WORKSPACE_DIR/#\~/$HOME}"
 GOVERNANCE_REPO="${GOVERNANCE_REPO:-DS-strategy}"
 
-IWE_ENV_FILE="$HOME/.iwe-paths"
+IWE_ENV_FILE="$WORKSPACE_DIR/.iwe-paths"
 ZSHENV_FILE="$HOME/.zshenv"
 IWE_ENV_MARKER="# IWE environment (WP-219, DP.FM.009): lookup-слой для путей к скриптам"
 
 if $DRY_RUN; then
     $QUIET || echo "  [DRY RUN] Would write $IWE_ENV_FILE (workspace=$WORKSPACE_DIR, governance=$GOVERNANCE_REPO)"
-    $QUIET || echo "  [DRY RUN] Would ensure $ZSHENV_FILE sources \$HOME/.iwe-paths"
+    $QUIET || echo "  [DRY RUN] Would ensure $ZSHENV_FILE sources \$WORKSPACE_DIR/.iwe-paths"
     exit 0
 fi
 
@@ -74,16 +74,29 @@ IWEENV_EOF
 
 $QUIET || echo "  ✓ $IWE_ENV_FILE written (workspace=$WORKSPACE_DIR)"
 
-# Ensure ~/.zshenv sources ~/.iwe-paths (idempotent)
-if [ -f "$ZSHENV_FILE" ] && grep -qF "$IWE_ENV_MARKER" "$ZSHENV_FILE"; then
-    $QUIET || echo "  ○ $ZSHENV_FILE already sources \$HOME/.iwe-paths"
-else
-    cat >> "$ZSHENV_FILE" <<'ZSHENV_EOF'
+# Replace both the legacy $HOME/.iwe-paths one-liner and any older managed
+# block. Marker presence alone is not proof that it sources this workspace.
+if [ -f "$ZSHENV_FILE" ]; then
+    ZSHENV_TMP=$(mktemp)
+    awk '
+      /^# IWE environment \(WP-219, DP.FM.009\):/{skip=1; next}
+      skip && /^unset _IWE_ROOT$/{skip=0; next}
+      /\[ -f "\$HOME\/\.iwe-paths" \] && source "\$HOME\/\.iwe-paths"/{next}
+      !skip{print}
+    ' "$ZSHENV_FILE" > "$ZSHENV_TMP"
+    mv "$ZSHENV_TMP" "$ZSHENV_FILE"
+fi
+if ! grep -qF "_IWE_ROOT=\"$WORKSPACE_DIR\"" "$ZSHENV_FILE" 2>/dev/null; then
+    cat >> "$ZSHENV_FILE" <<ZSHENV_EOF
 
 # IWE environment (WP-219, DP.FM.009): lookup-слой для путей к скриптам
-[ -f "$HOME/.iwe-paths" ] && source "$HOME/.iwe-paths"
+_IWE_ROOT="$WORKSPACE_DIR"
+[ -f "\$_IWE_ROOT/.iwe-paths" ] && source "\$_IWE_ROOT/.iwe-paths"
+unset _IWE_ROOT
 ZSHENV_EOF
-    $QUIET || echo "  ✓ $ZSHENV_FILE → sources \$HOME/.iwe-paths"
+    $QUIET || echo "  ✓ $ZSHENV_FILE → sources \$WORKSPACE_DIR/.iwe-paths"
+else
+    $QUIET || echo "  ○ $ZSHENV_FILE already sources $WORKSPACE_DIR/.iwe-paths"
 fi
 
 # Auto-enable pre-commit hooks for IWE repos that have .githooks/

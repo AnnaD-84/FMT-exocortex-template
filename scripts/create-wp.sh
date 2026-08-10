@@ -415,27 +415,40 @@ for i, name in enumerate(header_cols):
     col_index.setdefault(canonical, i)
 missing_names = [name for name in CANONICAL_NAMES if name not in col_index]
 if missing_names:
+    # issue #364: old installs cannot receive seed/template changes through
+    # update.sh, so migrate the first writable registry table in place. Existing
+    # columns (including the useful legacy «Активация») remain untouched; missing
+    # canonical columns are appended and old rows receive an explicit em dash.
+    def append_cell(line, value):
+        newline = "\n" if line.endswith("\n") else ""
+        body = line.rstrip("\n").rstrip()
+        if not body.endswith("|"):
+            raise ValueError("not a markdown table row")
+        return body[:-1].rstrip() + " | " + value + " |" + newline
+
+    header_idx = insert_at - 2
+    separator_idx = insert_at - 1
+    for name in missing_names:
+        lines[header_idx] = append_cell(lines[header_idx], name)
+        lines[separator_idx] = append_cell(lines[separator_idx], "---")
+
+    row_idx = insert_at
+    while row_idx < len(lines) and lines[row_idx].lstrip().startswith("|"):
+        for _ in missing_names:
+            lines[row_idx] = append_cell(lines[row_idx], "—")
+        row_idx += 1
+
+    header_line = lines[header_idx]
+    header_cols = [c.strip() for c in header_line.strip().strip("|").split("|")]
+    col_index = {}
+    for i, name in enumerate(header_cols):
+        canonical = COLUMN_SYNONYMS.get(name, name)
+        col_index.setdefault(canonical, i)
     print(
-        "❌ WP-REGISTRY.md: заголовок таблицы не содержит обязательных колонок {}.".format(
-            missing_names
-        ),
-        file=sys.stderr,
+        "   ⚠ REGISTRY: добавлены отсутствовавшие колонки {} (legacy-колонки сохранены)".format(
+            ", ".join(missing_names)
+        )
     )
-    print("   Заголовок: {}".format(header_line.strip()), file=sys.stderr)
-    print(
-        "   create-wp.sh требует колонки # | P | Название | Ст | Репо | Бюджет —",
-        file=sys.stderr,
-    )
-    print(
-        "   без них не знает, куда писать новую строку.",
-        file=sys.stderr,
-    )
-    print(
-        "   Приведите заголовок REGISTRY к схеме с этими 6 колонками (порядок и",
-        file=sys.stderr,
-    )
-    print("   доп. колонки — свободные), затем повторите создание РП.", file=sys.stderr)
-    sys.exit(1)
 
 repo_cell = repo if repo else "{}/inbox/WP-{}/".format(gov_repo, wp_id)
 values_by_name = {

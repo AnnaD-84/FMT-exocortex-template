@@ -5,11 +5,34 @@ set -euo pipefail
 
 CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null || true)
 [ -z "$CMD" ] && exit 0
+CWD=$(jq -r '.cwd // .tool_input.cwd // empty' 2>/dev/null || true)
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+WORKSPACE_ROOT="$(cd "$HOOK_DIR/../.." && pwd -P)"
 
 block() {
   echo "BLOCKED: $1" >&2
   exit 2
 }
+
+# #362: a top-level `cd` persists between Bash calls in Claude Code. Strip
+# quoted spans before detecting command segments; `(cd ... && ...)` remains
+# allowed because the opening parenthesis is not a top-level separator.
+if CMD_SCAN="$CMD" perl -e '
+  my $s=$ENV{"CMD_SCAN"};
+  $s =~ s/'"'"'[^'"'"']*'"'"'/ Q /g;
+  $s =~ s/"(?:\\.|[^"\\])*"/ Q /g;
+  exit($s =~ /(?:^|[;&|]\s*)cd\s+/ ? 0 : 1);
+'; then
+  block "верхнеуровневый cd запрещён: используй git -C <path>, абсолютный путь или (cd <path> && ...)."
+fi
+
+if [ -n "$CWD" ]; then
+  CWD_PHYSICAL=$(cd "$CWD" 2>/dev/null && pwd -P || printf '%s' "$CWD")
+  if [ "$CWD_PHYSICAL" != "$WORKSPACE_ROOT" ] && \
+     echo "$CMD" | grep -qE "(^|[[:space:]\"'])(\\.claude/|scripts/|memory/)"; then
+    block "root-relative path вызван из cwd=$CWD_PHYSICAL; используй абсолютный путь от $WORKSPACE_ROOT."
+  fi
+fi
 
 git_segment() {
   # Return only the shell segment containing `git <global-opts> <subcmd>`.

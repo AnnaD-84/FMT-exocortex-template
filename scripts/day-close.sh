@@ -98,10 +98,18 @@ do_backup() {
     --exclude='/agent-fault-profile/***' \
     --exclude='/hindsight/***' \
     --exclude='/decisions/***' \
+    --exclude='/rules/***' \
     --include='*/' \
     --include='*.md' --include='*.yaml' --include='*.yml' \
     --exclude='*' \
     "$MEMORY_SRC/" "$EXOCORTEX_DST/"
+
+  # #380: rules may carry an explicitly legal USER-SPACE block. Mirror them to
+  # a dedicated subtree so recovery never confuses platform rules with memory.
+  if [ -d "$WORKSPACE_DIR/.claude/rules" ]; then
+    mkdir -p "$EXOCORTEX_DST/rules"
+    rsync -a --delete "$WORKSPACE_DIR/.claude/rules/" "$EXOCORTEX_DST/rules/"
+  fi
 
   # Merge day-rhythm-config.yaml: use auto-memory as base, preserve non-empty user values in dst.
   # User-configurable keys protected: day_open.calendar_ids

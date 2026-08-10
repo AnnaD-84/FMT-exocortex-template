@@ -13,13 +13,52 @@
 # (this file) covers day-open-pipeline.sh + day-open-preflight.sh; the other
 # ~40 call sites are backlog (WP-5 П4), not blind-swept in one pass.
 
+# iwe_env_get FILE KEY — безопасно читает одно KEY=VALUE без source/eval.
+# Поддерживаются только shell-подобные строки с простым ключом; внешние кавычки
+# снимаются, команды и подстановки никогда не исполняются.
+iwe_env_get() {
+  local file="${1:-}" key="${2:-}" line value
+  [ -f "$file" ] || return 1
+  case "$key" in *[!A-Za-z0-9_]*|'') return 2 ;; esac
+  line=$(grep -E "^[[:space:]]*${key}=" "$file" 2>/dev/null | head -1) || return 1
+  [ -n "$line" ] || return 1
+  value=${line#*=}
+  value=${value#"${value%%[![:space:]]*}"}
+  value=${value%"${value##*[![:space:]]}"}
+  case "$value" in
+    \"*\") value=${value#\"}; value=${value%\"} ;;
+    \'*\') value=${value#\'}; value=${value%\'} ;;
+  esac
+  printf '%s\n' "$value"
+}
+
 # iwe_resolve_root [EXPLICIT] — canonical $IWE workspace root.
-# Precedence: explicit arg > IWE_WORKSPACE > IWE_ROOT > $HOME/IWE.
+# Precedence: explicit arg > IWE_WORKSPACE > IWE_ROOT > workspace .exocortex.env
+# > root derived from this installed library. No $HOME/IWE guess: a wrong root
+# must fail loudly instead of letting a script succeed against another install.
 # (IWE_ROOT_ARG, a third variant seen in some scripts, is intentionally NOT
 # consulted here — callers that need a positional-arg override should pass
 # it as EXPLICIT instead of adding a 4th env var to this precedence chain.)
 iwe_resolve_root() {
-  echo "${1:-${IWE_WORKSPACE:-${IWE_ROOT:-$HOME/IWE}}}"
+  local explicit="${1:-}" library_root configured
+  [ -n "$explicit" ] && { printf '%s\n' "$explicit"; return 0; }
+  [ -n "${IWE_WORKSPACE:-}" ] && { printf '%s\n' "$IWE_WORKSPACE"; return 0; }
+  [ -n "${IWE_ROOT:-}" ] && { printf '%s\n' "$IWE_ROOT"; return 0; }
+
+  library_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd -P) || return 1
+  if [ -f "$library_root/.exocortex.env" ]; then
+    configured=$(iwe_env_get "$library_root/.exocortex.env" WORKSPACE_DIR 2>/dev/null || true)
+    if [ -n "$configured" ] && [ -d "$configured" ]; then
+      printf '%s\n' "$configured"
+      return 0
+    fi
+  fi
+  if [ -d "$library_root/FMT-exocortex-template" ] || [ -d "$library_root/.iwe-runtime" ]; then
+    printf '%s\n' "$library_root"
+    return 0
+  fi
+  echo "iwe_resolve_root: cannot determine workspace root; pass an explicit path or set IWE_WORKSPACE/IWE_ROOT" >&2
+  return 1
 }
 
 # iwe_sha256 — sha256 of stdin, printed alone (no filename column).
@@ -35,6 +74,19 @@ iwe_sha256() {
     sha256sum | awk '{print $1}'
   else
     shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+# iwe_file_mtime_date FILE — дата YYYY-MM-DD без смешивания stdout двух
+# несовместимых stat-реализаций. GNU и BSD ветки выбираются явно (#300).
+iwe_file_mtime_date() {
+  local file="$1" epoch
+  if stat --version >/dev/null 2>&1; then
+    epoch=$(stat -c %Y "$file") || return 1
+    date -d "@$epoch" +%Y-%m-%d
+  else
+    epoch=$(stat -f %m "$file") || return 1
+    date -r "$epoch" +%Y-%m-%d
   fi
 }
 

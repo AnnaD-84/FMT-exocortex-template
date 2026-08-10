@@ -70,3 +70,28 @@ grep -q "gh api failed" "$TMPDIR/output" ||
   { echo "FAIL: partial failure advertised as clean" >&2; exit 1; }
 
 echo "✓ Contract verified: API failure yields exit 2, not a false clean report"
+
+# #382: CLI parsing must precede config resolution, and .exocortex.env is the
+# canonical install config when no process env is exported.
+TEST_ROOT="$TMPDIR/workspace"
+mkdir -p "$TEST_ROOT"
+cat > "$TEST_ROOT/.exocortex.env" <<'EOF'
+GITHUB_USER="ignored-user"
+IWE_FMT_REPO="test-owner/test-repo"
+EOF
+
+set +e
+PATH="$TMPDIR:/usr/bin:/bin" IWE_WORKSPACE="$TEST_ROOT" \
+  bash "$ALERT_SCRIPT" --no-telegram >"$TMPDIR/env-output" 2>&1
+ENV_RC=$?
+PATH="$TMPDIR:/usr/bin:/bin" IWE_WORKSPACE="$TEST_ROOT" \
+  bash "$ALERT_SCRIPT" --repo test-owner/test-repo --no-telegram >"$TMPDIR/arg-output" 2>&1
+ARG_RC=$?
+set -e
+
+[ "$ENV_RC" -eq 2 ] && grep -q "gh api failed" "$TMPDIR/env-output" ||
+  { echo "FAIL: .exocortex.env repo was not used" >&2; cat "$TMPDIR/env-output" >&2; exit 1; }
+[ "$ARG_RC" -eq 2 ] && grep -q "gh api failed" "$TMPDIR/arg-output" ||
+  { echo "FAIL: --repo did not override config before early exit" >&2; cat "$TMPDIR/arg-output" >&2; exit 1; }
+
+echo "✓ #382: --repo and .exocortex.env both reach the actual tracker check"
