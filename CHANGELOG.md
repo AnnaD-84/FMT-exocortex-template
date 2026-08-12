@@ -117,6 +117,43 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
+
+## [Unreleased] — обновлено 2026-08-12
+
+### Added
+
+- `0c1cfba` feat(wp518): link work packages to hypotheses
+- `52887e6` feat(create-wp): Hypothesis Gate (WP-496 Ф8) — --hypothesis обязателен при наличии журнала гипотез
+- `86daabe` feat(strategy-cycle): WP-agnostic decision-package contract + hypothesis-log regulation
+
+### Changed
+
+- `b8b903f` Merge remote-tracking branch 'origin/main'
+- `6402816` revert(create-wp): откат Hypothesis Gate (52887e6) — заменён механизмом РП518
+- `1ca4fe0` Merge remote-tracking branch 'origin/main'
+- `b69feb8` docs: sync README version badge to 0.38.3
+- `e233503` Ревизия внешнего позиционирования: ученик -> участник вне ступеней/ролей
+- `43aba30` ci(release): gate tag/release creation on Validate Template passing
+- `042e254` ci(audit): re-enable post-release audit trigger, throttled to minor/major bumps
+- `144ff18` ci(update): wire test-update-issue-226.sh into CI
+
+### Fixed
+
+- `7bfa0e6` fix(onboarding): correct МИМ name in template docs — Мастерская, not Школа
+
+
+## [0.38.3] — 2026-08-11
+
+### Added
+
+- Контракт цикла стратегирования (`extensions/strategy-cycle/`): форма события закрытия периода и пакета решений (≤10 позиций, обязательная деградация на пустой producer) без привязки к конкретным номерам рабочих продуктов — статус `draft`, ждёт живой приёмки на инсталляции без выделенного сервера.
+- `memory/lpf-hypothesis-log.md`: регламент журнала гипотез (4 обязательных поля, запрет правки задним числом, норма 8-15 живых записей, входной фильтр по ставке, событийная дисциплина вердикт/исправление/отзыв/замена). Закрывает год висевшую сломанную ссылку из `verify-hypotheses/SKILL.md`.
+
+### Changed
+
+- Шаги недельной стратегической сессии (`03-dissatisfactions.md`, `06a-pool.md`, `06b-budget.md`): правило принудительного выбора по неудовлетворённостям без движения 8+ недель, колонка «ставка» на гипотезу в пуле кандидатов, обязательный срок/триггер пересмотра для решений «не берём».
+- `week-close/SKILL.md`: инструкция не оставлять таблицу «Сверка РП↔НЭП» пустой заглушкой — явный алгоритм заполнения по списку закрытых РП недели.
+
 ## [0.38.2] — 2026-08-09
 
 ### Changed

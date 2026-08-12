@@ -62,7 +62,7 @@ gates_rationale: "операционный скилл; WP Gate применим 
 - **Результат месяца:** (только для РП ≥3h) к какому результату месяца (R1, R2, …) привязан? Допустимые ответы: R{N}, поддержка, off-plan. Source-of-truth маппинга: `${IWE_GOVERNANCE_REPO:-DS-strategy}/docs/Strategy.md` → «РП → Результаты»
 - **Критерий готовности:** что должно получиться
 - **Ставка — переход состояния (WP-457, WP-505):** ось из `docs/state-axes-registry.yaml` (только `gate_ready`: permission/Доверие, belonging/Оснащённость, engagement/Увлечённость, mastery/Компетентность) + формулировка «из → в» одной строкой; субъект перехода — пользователь платформы / пилот / команда. **Обязательно**, если файл реестра осей существует — скрипт заблокирует создание без `--state`. Файла нет (типовая установка) → пропустить.
-- **Гипотеза:** номер `H-NNN` из `current/hypotheses-log.md` (если журнал ведётся), либо «—» — осознанное «ставки нет» (инфраструктура/техдолг). Попадает в frontmatter и колонку «Ставка» реестра.
+- **Связь с гипотезой:** выбрать до запуска РП: `tests H-NNN`, `enables H-NNN`, `responds H-NNN`, `researches` или `operational`. Первые три требуют ровно одну гипотезу; два последних — явное «—». Значение `unclassified` допустимо только при создании обратимой заготовки и блокирует начало работы.
 
 ## Шаг 2. Нумерация
 
@@ -72,9 +72,9 @@ gates_rationale: "операционный скилл; WP Gate применим 
 
 Прочитай текущий бюджет недели из WeekPlan. Предупреди если превышение.
 
-## Шаг 4. Запись — запустить `scripts/create-wp.sh`
+## Шаг 4. Запись — запустить `$IWE_SCRIPTS/create-wp.sh`
 
-Все шаги ниже автоматизированы скриптом `scripts/create-wp.sh`. Скрипт пишет в 4 места:
+Все шаги ниже автоматизированы скриптом `$IWE_SCRIPTS/create-wp.sh`. Скрипт пишет в 4 места:
 
 1. **`inbox/WP-{N}/WP-{N}.md`** → context file (всегда папка — WP-434, см. INBOX-CONVENTION)
 2. **`docs/WP-REGISTRY.md`** → новая строка таблицы
@@ -92,12 +92,13 @@ gates_rationale: "операционный скилл; WP Gate применим 
 **Синтаксис скрипта:**
 ```bash
 touch ~/.claude/state/wp-consent-{N}   # WP Gate — обязательно перед запуском
-bash scripts/create-wp.sh \
+bash "$IWE_SCRIPTS/create-wp.sh" \
   --title "Название РП" \
   --budget 5h \
   --priority P2 \
   --state "belonging (Оснащённость): пилот без Х → с Х" \  # обязателен при наличии docs/state-axes-registry.yaml
-  --hypothesis H-101 \ # необязательно; по умолчанию «—» (нет ставки)
+  --hypothesis H-101 \ # для tests/enables/responds
+  --hypothesis-relation tests \ # tests|enables|responds|researches|operational
   --result R3 \        # необязательно; если ≥3h — передать для автовставки в Strategy.md
   --repo "DS-repo"     # необязательно
 ```
@@ -115,6 +116,7 @@ last_session: {YYYY-MM-DD}
 related: []
 state_transition: "{ось (Русское имя): из → в}"
 hypothesis: "{H-NNN или —}"
+hypothesis_relation: "{tests|enables|responds|researches|operational}"
 ---
 
 # WP-{N}: {название}
